@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="bi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Killim Light map</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="/assets/leaflet/leaflet.css">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  /* Embedded map: fills whatever frame another website gives it. */
+  html, body { height: 100%; margin: 0; padding: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); }
+  .embedmap { flex: 1; min-height: 240px; }
+  .embedbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 6px 10px; font-size: .8rem; color: var(--muted); background: var(--card); border-top: 1px solid var(--line); }
+  .embedbar a { color: var(--ink); font-weight: 700; }
+  .embedbar .legend { margin: 0; gap: 4px 10px; font-size: .78rem; }
+  .embedbar .grow { flex: 1; }
+</style>
+</head>
+<body>
+<div class="embedmap" id="map" role="region" aria-label="Map of Vanuatu nakamals"></div>
+<div class="embedbar">
+  <div class="legend">
+    <span class="l-green"><span class="dot"></span><span data-t="l.green">Kava ready</span></span>
+    <span class="l-amber"><span class="dot"></span><span data-t="l.amber">Low on kava</span></span>
+    <span class="l-closed"><span class="dot">✕</span><span data-t="l.closed">Closed</span></span>
+  </div>
+  <span class="grow"></span>
+  <a href="/" target="_blank" rel="noopener">Killim Light ↗</a>
+  <span>Data CC BY 4.0 · Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></span>
+</div>
+<script src="/assets/leaflet/leaflet.js"></script>
+<script src="/assets/i18n.js"></script>
+<script>
+  // ?lang=en|bi  ?region=efate|santo|tanna|all  ?lat=&lng=&zoom=  ?light=green
+  (function () { var q = new URLSearchParams(location.search); var l = q.get('lang'); if (l === 'en' || l === 'bi') KLi18n.setLang(l, true); })();
+</script>
+<script src="/assets/common.js"></script>
+<script>
+(() => {
+  const { t, $, esc, LIGHT, lightOf, updatedLine, kavaLine, makeMap, pinIcon, api } = KL;
+  KLi18n.applyStatic();
+  const q = new URLSearchParams(location.search);
+  const map = makeMap($('map'), { region: q.get('region') || 'efate', zoomControl: true });
+  if (q.get('lat') && q.get('lng')) map.setView([+q.get('lat'), +q.get('lng')], +(q.get('zoom') || 15));
+  const only = q.get('light');
+  const markers = new Map();
+  async function load() {
+    let d; try { d = await api('/api/nakamals'); } catch { return; }
+    const items = d.items.filter(n => !only || lightOf(n) === only);
+    const ids = new Set(items.map(n => n.id));
+    for (const [id, m] of markers) if (!ids.has(id)) { map.removeLayer(m); markers.delete(id); }
+    for (const n of items) {
+      const l = lightOf(n), kv = kavaLine(n);
+      const html = `<div class="pop l-${l}"><h3>${esc(n.name)}</h3><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
+        <div class="line">${esc(updatedLine(n))}</div>${n.note ? `<div class="note"><b>${esc(n.note)}</b></div>` : ''}${kv ? `<div class="line">${esc(kv)}</div>` : ''}
+        <a class="link" href="/n/${encodeURIComponent(n.id)}" target="_blank" rel="noopener">${esc(t('details'))} ↗</a></div>`;
+      let m = markers.get(n.id);
+      if (!m) { m = L.marker([n.lat, n.lng], { title: n.name }).addTo(map).bindPopup(''); markers.set(n.id, m); }
+      m.setIcon(pinIcon(l)); m.setPopupContent(html);
+    }
+  }
+  load(); setInterval(() => { if (!document.hidden) load(); }, 60000);
+})();
+</script>
+</body>
+</html>

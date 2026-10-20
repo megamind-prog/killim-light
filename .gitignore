@@ -1,0 +1,4 @@
+node_modules
+.netlify
+public/assets/auth.js
+public/assets/leaflet

@@ -1,0 +1,57 @@
+[build]
+  command = "npm run build"
+  publish = "public"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/chief"
+  to = "/chief.html"
+  status = 200
+
+[[redirects]]
+  from = "/owner"
+  to = "/owner.html"
+  status = 200
+
+[[redirects]]
+  from = "/embed"
+  to = "/embed.html"
+  status = 200
+
+[[redirects]]
+  from = "/developers"
+  to = "/developers.html"
+  status = 200
+
+# Other websites may show the map in a frame.
+[[headers]]
+  for = "/embed*"
+  [headers.values]
+    Content-Security-Policy = "frame-ancestors *"
+
+# The offline helper must always be checked for updates.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Service-Worker-Allowed = "/"
+
+# Only the team page and owner page should never appear inside someone else's site.
+[[headers]]
+  for = "/owner*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/chief*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    Cache-Control = "no-store"
+    X-Frame-Options = "DENY"
+
+[[headers]]
+  for = "/assets/osm/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

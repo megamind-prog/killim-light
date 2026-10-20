@@ -1,0 +1,31 @@
+{
+  "note": "Starting nakamals. Owner contacts are never stored in the code (it's public): add them on the team page (/chief).",
+  "nakamals": [
+    {
+      "id": "salo",
+      "owner": null,
+      "name": "Salo",
+      "area": "Beverly hills",
+      "about": "",
+      "hours": "24/7",
+      "lat": -17.721762,
+      "lng": 168.325115,
+      "prices": [],
+      "light": "green",
+      "lightAt": 1792393635796,
+      "note": "",
+      "createdAt": 1792393507901,
+      "updatedAt": 1792393642173,
+      "status": {
+        "approved": true,
+        "approvedAt": 1792393570341,
+        "visit": {
+          "date": "2026-10-17",
+          "notes": "Good",
+          "visited": true,
+          "visitedAt": 1792393540669
+        }
+      }
+    }
+  ]
+}

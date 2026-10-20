@@ -1,0 +1,286 @@
+// Shared by every page: lights, helpers, sharing, and the OpenStreetMap-based map of Vanuatu.
+(() => {
+const t = (k, v) => (window.KLi18n ? KLi18n.t(k, v) : k);
+const baseMeta = document.querySelector('meta[name="kl-base"]');
+const BASE = baseMeta ? baseMeta.content : '/';   // '/' on the real site; '' (relative) in the preview
+const asset = p => BASE + 'assets/' + p;
+const MAP_IMG = asset('portvila-osm.jpg');
+const MAP_BOUNDS = [[-17.7591498, 168.2995605], [-17.7225262, 168.3380127]];   // detailed central Port Vila street map
+const VANUATU_BOUNDS = [[-20.4, 166.4], [-13.0, 170.3]];
+const REGIONS = {
+  efate: { bounds: [[-17.85, 168.12], [-17.39, 168.62]] },
+  santo: { bounds: [[-15.75, 166.5], [-14.6, 167.3]] },
+  tanna: { bounds: [[-19.7, 169.1], [-19.3, 169.5]] },
+  all:   { bounds: VANUATU_BOUNDS },
+};
+const ISLANDS = [['Efate', -17.655, 168.43, 'big'], ['Port Vila', -17.7334, 168.3200, 'town'], ['Nguna', -17.449, 168.351, 'isl'], ['Pele', -17.496, 168.407, 'isl'], ['Emao', -17.485, 168.486, 'isl'],
+  ['Moso', -17.533, 168.26, 'isl'], ['Lelepa', -17.588, 168.211, 'isl'], ['Hat Island', -17.64, 168.154, 'isl'], ['Iririki', -17.7445, 168.3075, 'isl'],
+  ['Espiritu Santo', -15.35, 166.85, 'big'], ['Luganville', -15.515, 167.18, 'town'], ['Malo', -15.68, 167.17, 'isl'], ['Tanna', -19.52, 169.33, 'big'], ['Lenakel', -19.53, 169.27, 'town'],
+  ['Malekula', -16.2, 167.5, 'big'], ['Pentecost', -15.7, 168.18, 'big'], ['Ambae', -15.4, 167.85, 'big'], ['Maewo', -15.15, 168.12, 'big'], ['Epi', -16.7, 168.25, 'big'], ['Erromango', -18.8, 169.1, 'big'], ['Aneityum', -20.2, 169.78, 'isl'], ['Banks Islands', -14.0, 167.5, 'isl']];
+// OpenStreetMap data: a light coastline for the whole country, then streets per island group, fetched only when you zoom in there.
+const getJSON = f => fetch(asset(f)).then(r => r.ok ? r.json() : null).catch(() => null);
+let land = null, osmIndex = null; const osmGroups = {};
+const LAND_DATA = () => (land ||= getJSON('vanuatu-land.json'));
+const OSM_INDEX = () => (osmIndex ||= getJSON('osm/index.json'));
+const OSM_GROUP = id => (osmGroups[id] ||= getJSON('osm/' + id + '.json'));
+const STREET_ZOOM = 9.5;
+const ROAD = {
+  pri: { c: '#f7fabf', k: '#c6c591', w: [2, 3, 4, 6, 9, 12, 15, 18], min: 9 },
+  sec: { c: '#ffffff', k: '#c5c5c5', w: [1.4, 2.2, 3, 4.5, 7, 10, 13, 16], min: 9 },
+  min: { c: '#ffffff', k: '#c9c3b8', w: [1, 1.5, 2, 3, 5, 8, 11, 14], min: 10.25 },
+  res: { c: '#ffffff', k: '#c9c3b8', w: [.6, .9, 1.3, 2, 3.5, 6, 9, 12], min: 12 },
+  svc: { c: '#ffffff', k: '#c9c3b8', w: [0, 0, .5, .8, 1.5, 3, 5, 7], min: 14 },
+  trk: { c: '#a87d3c', dash: '4 3', w: [0, 0, .7, .9, 1.2, 1.6, 2, 2.5], min: 13 },
+  riv: { c: '#aad3df', w: [.8, 1.2, 1.6, 2.2, 3, 4, 5, 6], min: 11 },
+  str: { c: '#aad3df', w: [0, .6, .8, 1.1, 1.5, 2, 2.5, 3], min: 12 },
+  rwy: { c: '#bbbbcc', w: [3, 5, 8, 14, 26, 50, 100, 200], min: 9 },
+};
+const ROAD_ORDER = ['riv', 'str', 'trk', 'svc', 'res', 'min', 'sec', 'pri', 'rwy'];
+const wAt = (st, z) => st.w[Math.max(0, Math.min(7, Math.round(z) - 11))] * (z < 11 ? 0.6 : 1);
+
+// ---------- lights ----------
+const STALE_MS = 14 * 3600e3, VU_OFFSET = 11 * 3600e3;
+const SYM = { green: '', amber: '', closed: '✕', stale: '', reported: '!', pending: '' };
+const LIGHT = new Proxy({}, { get: (_, k) => { const sh = t('ls.' + k); return { label: t('l.' + k), short: sh === 'ls.' + k ? t('l.' + k) : sh, sym: SYM[k] || '' }; } });
+const num = v => typeof v === 'number' && isFinite(v);
+// The first time the owner's usual closing time comes round after they set the light, the light counts as closed.
+function autoClosedAt(n) {
+  if (!n.closeTime || !num(n.lightAt)) return null;
+  const [h, m] = n.closeTime.split(':').map(Number);
+  const local = new Date(n.lightAt + VU_OFFSET);
+  let at = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), h, m) - VU_OFFSET;
+  if (at <= n.lightAt) at += 864e5;
+  return at;
+}
+function lightOf(n, now = Date.now()) {
+  if (n.light === 'closed' || !num(n.lightAt)) return 'closed';
+  const ac = autoClosedAt(n);
+  if (ac && now >= ac) return 'closed';
+  if (now - n.lightAt >= STALE_MS) return 'stale';
+  if (n.reports) return 'reported';
+  return n.light;
+}
+function ago(ms) {
+  if (!num(ms)) return '';
+  const m = Math.max(0, Math.round((Date.now() - ms) / 6e4));
+  if (m < 1) return t('ago.now');
+  if (m < 60) return t('ago.min', { n: m });
+  const h = Math.round(m / 60);
+  if (h < 24) return t('ago.hour', { n: h });
+  return t('ago.day', { n: Math.round(h / 24) });
+}
+const vuTime = ms => { const d = new Date(ms + VU_OFFSET); const h = d.getUTCHours(), mm = String(d.getUTCMinutes()).padStart(2, '0'); return `${(h % 12) || 12}:${mm} ${h < 12 ? 'AM' : 'PM'}`; };
+const fmtClose = hhmm => { const [h, m] = hhmm.split(':').map(Number); return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+const REP_WORD = { closed: 'rep.closed', nokava: 'rep.nokava', open: 'rep.open', location: 'rep.location' };
+const reportWhat = r => { if (!r || !r.kinds) return ''; const top = Object.entries(r.kinds).sort((a, b) => b[1] - a[1])[0]; return top ? t(REP_WORD[top[0]]).toLowerCase() : ''; };
+function updatedLine(n) {
+  const l = lightOf(n);
+  if (!num(n.lightAt)) return t('lightNever');
+  const ac = autoClosedAt(n);
+  if (l === 'closed' && n.light !== 'closed' && ac && Date.now() >= ac) return t('lightAutoClosed', { time: fmtClose(n.closeTime) });
+  if (l === 'stale') return t('lightStale', { light: LIGHT[n.light].label.toLowerCase(), ago: ago(n.lightAt) });
+  if (l === 'reported') return t('reportedWhy', { n: n.reports.count, what: reportWhat(n.reports) });
+  return t('lightUpdated', { ago: ago(n.lightAt) }) + ((l === 'green' || l === 'amber') && n.closeTime ? ' · ' + t('closesAt', { time: fmtClose(n.closeTime) }) : '');
+}
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clean = (v, max) => String(v ?? '').trim().slice(0, max);
+const priceList = n => (Array.isArray(n.prices) ? n.prices : []).filter(p => p && p.item && p.price).slice(0, 8);
+const starsText = v => '★★★★★'.slice(0, Math.round(v)) + '☆☆☆☆☆'.slice(0, 5 - Math.round(v));
+const directions = n => `https://www.google.com/maps/dir/?api=1&destination=${n.lat},${n.lng}`;
+const kavaLine = n => [n.kavaFrom && n.kavaFrom !== 'Other' ? t('kavaFrom', { i: n.kavaFrom }) : '', n.strength ? t('st.' + n.strength) : ''].filter(Boolean).join(' · ');
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+function deviceId() {
+  let d = store.get('kl-device', null);
+  if (!d) { d = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); store.set('kl-device', d); }
+  return d;
+}
+// Distance in km between two points, for "near me".
+function km(a, b) {
+  const R = 6371, rad = x => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtKm = d => (d < 1 ? `${Math.round(d * 1000 / 10) * 10} m` : `${d < 10 ? d.toFixed(1) : Math.round(d)} km`);
+function locate() {
+  return new Promise((ok, no) => {
+    if (!navigator.geolocation) return no(new Error('none'));
+    navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude }), no, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  });
+}
+
+let toastTimer;
+function toast(msg) {
+  document.querySelector('.toast')?.remove(); clearTimeout(toastTimer);
+  const el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); el.textContent = msg;
+  document.body.appendChild(el); toastTimer = setTimeout(() => el.remove(), 3400);
+}
+function setMsg(id, text, ok) { const el = $(id); if (!el) return; el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? { credentials: 'same-origin' }
+    : { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error((data && data.error) || t('netError')); e.status = r.status; throw e; }
+  return data;
+}
+
+// ---------- sharing ----------
+const shareUrl = n => location.origin + BASE + 'n/' + encodeURIComponent(n.id);
+async function shareNakamal(n) {
+  const url = shareUrl(n), text = t('shareText', { name: n.name, light: LIGHT[lightOf(n)].label });
+  if (navigator.share) { try { await navigator.share({ title: n.name, text, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  shareSheet(n, url, text);
+}
+function shareSheet(n, url, text) {
+  document.querySelector('.sheet')?.remove();
+  const el = document.createElement('div'); el.className = 'sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', t('share'));
+  el.innerHTML = `<div class="sheetbox"><h3>${esc(t('share'))}: ${esc(n.name)}</h3>
+    <a class="btn fb" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}" target="_blank" rel="noopener">Facebook</a>
+    <a class="btn wa" href="https://wa.me/?text=${encodeURIComponent(text + ' ' + url)}" target="_blank" rel="noopener">WhatsApp</a>
+    <div class="prow2"><input class="field" readonly value="${esc(url)}" aria-label="Link"><button class="btn" type="button" data-copy>${esc(t('copyLink'))}</button></div>
+    <button class="link" type="button" data-close>${esc(t('cancel'))}</button></div>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', async e => {
+    if (e.target === el || e.target.closest('[data-close]')) return el.remove();
+    if (e.target.closest('[data-copy]')) {
+      const input = el.querySelector('input');
+      try { await navigator.clipboard.writeText(url); toast(t('copied')); } catch { input.select(); }
+    }
+  });
+}
+
+// ---------- pictures ----------
+// Shrink a phone photo to a JPEG before upload (saves mobile data). square=true crops the centre for a profile picture.
+async function resizeToJpeg(file, max = 1600, square = false) {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error("That file isn't a picture this phone can open. Try a JPEG or PNG photo.");
+  let sx = 0, sy = 0, sw = bmp.width, sh = bmp.height;
+  if (square) { const s = Math.min(sw, sh); sx = (sw - s) / 2; sy = (sh - s) / 2; sw = sh = s; }
+  const k = Math.min(1, max / Math.max(sw, sh));
+  const w = Math.round(sw * k), h = Math.round(sh * k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+  return { blob, w, h };
+}
+async function uploadImage(kind, id, file) {
+  const { blob, w, h } = await resizeToJpeg(file, kind === 'avatar' ? 512 : 1600, kind === 'avatar');
+  const q = new URLSearchParams({ kind }); if (id) q.set('id', id);
+  const send = () => fetch(BASE + 'api/upload?' + q, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'image/jpeg', 'x-width': w, 'x-height': h }, body: blob });
+  let r = await send();
+  if (r.status === 401 && window.KLAuth) { try { await KLAuth.refreshSession(); } catch {} r = await send(); }
+  let data = null; try { data = await r.json(); } catch {}
+  if (!r.ok) throw new Error((data && data.error) || t('netError'));
+  return data;
+}
+
+// ---------- map ----------
+const pinIcon = (l, sel) => L.divIcon({ className: `pin l-${l} ${sel ? 'sel' : ''}`, html: `<div>${SYM[l] || ''}</div>`, iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -14] });
+
+function makeMap(el, opts = {}) {
+  const start = opts.region && REGIONS[opts.region] ? REGIONS[opts.region].bounds : REGIONS.efate.bounds;
+  delete opts.region;
+  const m = L.map(el, { maxBounds: L.latLngBounds(VANUATU_BOUNDS).pad(0.15), maxBoundsViscosity: 0.8, minZoom: 6, maxZoom: 18, zoomSnap: 0.25, attributionControl: false, preferCanvas: true, ...opts });
+  el.style.background = '#aad3df';
+  const rnd = L.canvas({ padding: 0.3 });
+  const town = L.imageOverlay(MAP_IMG, MAP_BOUNDS, { alt: 'OpenStreetMap street map of central Port Vila', zIndex: 5 });
+  const islandLabels = L.layerGroup(ISLANDS.map(([name, lat, lng, k]) => L.marker([lat, lng], { interactive: false, keyboard: false,
+    icon: L.divIcon({ className: 'place ' + k, html: `<span>${name}</span>`, iconSize: [0, 0] }) })));
+  const groups = [];     // loaded island groups: { layers, places }
+  const asked = new Set();
+  // The whole country: OpenStreetMap coastline, simplified.
+  LAND_DATA().then(d => { if (d && document.body.contains(el)) L.polygon(d, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }).addTo(m).bringToBack(); });
+  const lab = (d, cls) => L.layerGroup(d.places.filter(p => cls.includes(p[0])).map(([kind, name, lat, lng]) =>
+    L.marker([lat, lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'place ' + kind, html: `<span>${esc(name)}</span>`, iconSize: [0, 0] }) })));
+  function addGroup(d) {
+    if (!d || !document.body.contains(el)) return;
+    L.polygon(d.land, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }).addTo(m);
+    if (d.lines.lake) L.polygon(d.lines.lake, { renderer: rnd, interactive: false, stroke: false, fillColor: '#aad3df', fillOpacity: 1 }).addTo(m);
+    const layers = ROAD_ORDER.filter(k => d.lines[k]).map(k => {
+      const st = ROAD[k];
+      const casing = st.k ? L.polyline(d.lines[k], { renderer: rnd, interactive: false, color: st.k, lineCap: 'round', lineJoin: 'round' }) : null;
+      const fill = L.polyline(d.lines[k], { renderer: rnd, interactive: false, color: st.c, dashArray: st.dash, lineCap: st.dash ? 'butt' : 'round', lineJoin: 'round', opacity: 1 });
+      return { k, st, casing, fill };
+    });
+    const places = [[lab(d, ['town']), 10, 15], [lab(d, ['village', 'suburb']), 10.25, 99], [lab(d, ['hamlet', 'neighbourhood']), 13.5, 99],
+      [lab(d, ['isl']), 11.5, 15], [lab(d, ['islet']), 13, 99]];
+    groups.push({ layers, places });
+    sync();
+  }
+  // Fetch the streets for any island group in view once you are zoomed in enough.
+  function load() {
+    if (!document.body.contains(el) || m.getZoom() < STREET_ZOOM) return;
+    const view = m.getBounds().pad(0.25);
+    OSM_INDEX().then(ix => (ix ? ix.groups : []).forEach(g => {
+      if (asked.has(g.id) || !view.intersects(L.latLngBounds([g.bbox[0], g.bbox[1]], [g.bbox[2], g.bbox[3]]))) return;
+      asked.add(g.id); OSM_GROUP(g.id).then(addGroup);
+    }));
+  }
+  // Show more detail as you zoom in, like the OpenStreetMap site.
+  function sync() {
+    if (!document.body.contains(el)) return;
+    const z = m.getZoom();
+    const all = groups.flatMap(g => g.layers);
+    ROAD_ORDER.forEach(k => all.filter(l => l.k === k).forEach(({ st, casing, fill }) => {
+      const w = wAt(st, z);
+      if (z < st.min || w <= 0) { casing && m.removeLayer(casing); m.removeLayer(fill); return; }
+      if (casing) { casing.setStyle({ weight: w + (z >= 14 ? 2 : 1) }); if (!m.hasLayer(casing)) casing.addTo(m); }
+      fill.setStyle({ weight: w }); if (!m.hasLayer(fill)) fill.addTo(m);
+    }));
+    // Road fills always sit above every casing, so junctions look clean.
+    ROAD_ORDER.forEach(k => all.filter(l => l.k === k).forEach(l => m.hasLayer(l.fill) && l.fill.bringToFront()));
+    groups.forEach(g => g.places.forEach(([pg, lo, hi]) => (z >= lo && z < hi ? pg.addTo(m) : m.removeLayer(pg))));
+    z >= 15 ? town.addTo(m) : m.removeLayer(town);
+    z < 11.5 ? islandLabels.addTo(m) : m.removeLayer(islandLabels);
+    // Island names for the whole country only make sense zoomed right out.
+    islandLabels.eachLayer(mk => { const el2 = mk.getElement && mk.getElement(); if (el2) el2.style.display = (z < 8.5 && !/big|town/.test(el2.className)) ? 'none' : ''; });
+  }
+  m.on('moveend', load);
+  m.on('zoomend', sync);
+  m.fitBounds(start);
+  m.showRegion = r => m.flyToBounds((REGIONS[r] || REGIONS.efate).bounds, { duration: .8 });
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(() => { if (m._loaded && document.body.contains(el)) m.invalidateSize(); });
+    ro.observe(el); m.on('unload', () => ro.disconnect());
+  }
+  return m;
+}
+
+// A map where the owner taps or drags a pin to set the nakamal's location.
+function makePicker(el, textEl, start, locBtn) {
+  const picker = makeMap(el, { region: start && num(start[0]) ? null : 'efate' });
+  let marker = null, value = null;
+  const place = ll => {
+    if (!L.latLngBounds(VANUATU_BOUNDS).contains(ll)) { textEl.textContent = t('pinOff'); return; }
+    value = { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) };
+    if (!marker) {
+      marker = L.marker(ll, { draggable: true, icon: pinIcon('green', true) }).addTo(picker);
+      marker.on('dragend', () => place(marker.getLatLng()));
+    } else marker.setLatLng(ll);
+    textEl.textContent = t('pinPlaced');
+  };
+  if (start && num(start[0])) { place(L.latLng(start[0], start[1])); picker.setView(start, 15); }
+  picker.on('click', e => place(e.latlng));
+  if (locBtn) locBtn.onclick = async () => {
+    textEl.textContent = t('locating');
+    try { const p = await locate(); place(L.latLng(p.lat, p.lng)); picker.setView([p.lat, p.lng], 17); }
+    catch { textEl.textContent = t('locDenied'); }
+  };
+  return { get value() { return value; }, remove: () => picker.remove() };
+}
+
+// Installable app: register the offline helper (real site only).
+if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
+  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl,
+  makeMap, makePicker, pinIcon, REGIONS };
+})();

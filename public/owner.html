@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="bi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Owner login · Killim Light</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#5b4a2e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="/assets/leaflet/leaflet.css">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="appbar">
+  <div class="wrap">
+    <a href="/" class="brandlink"><img class="logo" src="/assets/icon.svg" alt=""></a>
+    <div class="grow">
+      <h1>Killim Light</h1>
+      <div class="sub" data-t="ownersSub">Nakamal owners</div>
+    </div>
+    <button class="langbtn" type="button" id="langBtn">English</button>
+    <span class="who" id="who" hidden></span>
+  </div>
+</header>
+<main class="wrap">
+  <a class="link backmap" href="/" data-t="backMap">← Back to the map</a>
+  <section class="panel" id="box" aria-live="polite"><div class="card"><p class="hint" data-t="loading">Loading…</p></div></section>
+</main>
+<script src="/assets/leaflet/leaflet.js"></script>
+<script src="/assets/i18n.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/auth.js"></script>
+<script src="/assets/auth-ui.js"></script>
+<script src="/assets/owner.js"></script>
+</body>
+</html>

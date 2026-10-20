@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="bi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Killim Light · Nakamals Vanuatu</title>
+<meta name="description" content="Live kava lights for nakamals in Vanuatu: see which nakamals have kava ready tonight, prices, ratings and directions.">
+<meta name="theme-color" content="#5b4a2e">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<meta property="og:title" content="Killim Light"><meta property="og:description" content="Wanem nakamal i gat kava tunaet? Live kava lights for nakamals in Vanuatu.">
+<meta property="og:image" content="/assets/share-card.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="/assets/leaflet/leaflet.css">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="appbar">
+  <div class="wrap">
+    <a href="/" class="brandlink"><img class="logo" src="/assets/icon.svg" alt=""></a>
+    <div class="grow">
+      <h1>Killim Light</h1>
+      <div class="sub" data-t="tagline">Where is the kava ready tonight?</div>
+    </div>
+    <button class="langbtn" type="button" id="langBtn">English</button>
+    <span class="count" id="count">…</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="banner" id="offlineBanner" hidden></div>
+  <section id="viewMap" aria-label="Nakamals">
+    <div class="tools regions" role="group" aria-label="Island">
+      <button class="chip" data-region="efate" aria-pressed="true" data-t="r.efate">Efate</button>
+      <button class="chip" data-region="santo" aria-pressed="false" data-t="r.santo">Santo</button>
+      <button class="chip" data-region="tanna" aria-pressed="false" data-t="r.tanna">Tanna</button>
+      <button class="chip" data-region="all" aria-pressed="false" data-t="r.all">All Vanuatu</button>
+      <button class="chip install" id="installBtn" type="button" hidden data-t="install">Install app</button>
+    </div>
+    <div class="mapbox">
+      <div class="map" id="map" role="region" aria-label="Map of Vanuatu with nakamals"></div>
+      <div class="zoomhint" id="zoomHint" hidden data-t="zoomHint">Zoom in to see tonight's kava lights</div>
+      <button class="mapbtn" type="button" id="locBtn" data-t="nearMe">📍 Near me</button>
+      <div class="legend">
+        <span class="l-green"><span class="dot"></span><span data-t="l.green">Kava ready</span></span>
+        <span class="l-amber"><span class="dot"></span><span data-t="l.amber">Low on kava</span></span>
+        <span class="l-closed"><span class="dot">✕</span><span data-t="l.closed">Closed</span></span>
+        <span class="l-stale"><span class="dot"></span><span data-t="l.stale">No update today</span></span>
+        <span class="attrib" data-t="mapAttrib" data-tv='{"osm":"<a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap contributors</a>"}'>Map data © OpenStreetMap contributors</span>
+      </div>
+    </div>
+
+    <div class="listhead">
+      <h2 data-t="allNakamals">All nakamals</h2>
+      <input class="field search" id="search" type="search" data-t-ph="search">
+    </div>
+    <div class="tools" role="group" aria-label="Filter">
+      <button class="chip" data-f="all" aria-pressed="true" data-t="f.all">All</button>
+      <button class="chip l-green" data-f="green" aria-pressed="false"><span class="dot"></span><span data-t="ls.green">Kava ready</span></button>
+      <button class="chip l-amber" data-f="amber" aria-pressed="false"><span class="dot"></span><span data-t="ls.amber">Low</span></button>
+      <button class="chip l-closed" data-f="closed" aria-pressed="false"><span class="dot">✕</span><span data-t="ls.closed">Closed</span></button>
+      <button class="chip" data-f="fav" aria-pressed="false" data-t="f.fav">★ Favourites</button>
+      <label for="sort" class="sortlabel"><span data-t="sort">Sort</span>
+        <select class="field sort" id="sort">
+          <option value="status" data-t="sort.status">Open first</option><option value="near" data-t="sort.near">Nearest to me</option>
+          <option value="rating" data-t="sort.rating">Top rated</option><option value="name" data-t="sort.name">Name</option></select></label>
+    </div>
+    <div class="list" id="list" aria-live="polite"><div class="empty" data-t="loading">Loading…</div></div>
+    <p class="ownerlink"><span data-t="ownerLink">Run a nakamal?</span> <a class="link" href="/owner" data-t="ownerLogin">Owner login</a></p>
+    <p class="footlinks"><a href="/developers">Use this map in your app or website</a> · <a href="/developers#licence">Open data &amp; licence</a></p>
+  </section>
+</main>
+
+<script src="/assets/leaflet/leaflet.js"></script>
+<script src="/assets/i18n.js"></script>
+<script src="/assets/common.js"></script>
+<script src="/assets/public.js"></script>
+</body>
+</html>

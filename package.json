@@ -1,0 +1,24 @@
+{
+  "name": "killim-light",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@netlify/blobs": "^11.1.4",
+    "@netlify/functions": "^6.0.2",
+    "@netlify/identity": "^2.0.0",
+    "leaflet": "^1.9.4",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "type": "module",
+  "private": true
+}

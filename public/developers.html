@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Developers · Killim Light</title>
+<meta name="description" content="Use the Killim Light nakamal map and live kava lights in your own website or app: embeddable map, JSON and GeoJSON API, open licence.">
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  .doc { max-width: 760px; display: grid; gap: 18px; margin-top: 18px; }
+  .doc h2 { font: 800 1.45rem/1.15 var(--f-display); margin: 8px 0 0; text-wrap: balance; }
+  .doc h3 { font: 700 1.1rem var(--f-display); margin: 0; }
+  .doc p, .doc li { line-height: 1.6; max-width: 68ch; }
+  .doc pre { background: #1f1b14; color: #f1ece2; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: .85rem; line-height: 1.5; margin: 0; }
+  .doc code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+  .doc p code, .doc li code, .doc td code { background: var(--field); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
+  .doc table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  .doc th, .doc td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tablewrap { overflow-x: auto; }
+  .preview { width: 100%; height: 340px; border: 1px solid var(--line); border-radius: 14px; }
+</style>
+</head>
+<body>
+<header class="appbar">
+  <div class="wrap">
+    <a href="/" class="brandlink"><img class="logo" src="/assets/icon.svg" alt=""></a>
+    <div class="grow"><h1>Killim Light</h1><div class="sub">For developers</div></div>
+  </div>
+</header>
+<main class="wrap">
+  <a class="link backmap" href="/">← Back to the map</a>
+  <article class="doc">
+    <section class="card">
+      <h2>Use our nakamal map in your website or app</h2>
+      <p>Killim Light shows which nakamals in Vanuatu have kava ready, live, set by the owners themselves. The map and the data are open: tourism sites, news sites, other Vanuatu apps and anyone else can show them for free, as long as they credit Killim Light.</p>
+    </section>
+
+    <section class="card">
+      <h2>1. Embed the live map</h2>
+      <p>Paste this where you want the map. It updates itself every minute.</p>
+<pre><code>&lt;iframe src="https://killimlightvanuatu.com/embed?region=efate&amp;lang=en"
+        width="100%" height="420" style="border:0;border-radius:12px"
+        loading="lazy" title="Killim Light: live nakamal map"&gt;&lt;/iframe&gt;</code></pre>
+      <div class="tablewrap"><table>
+        <tr><th>Option</th><th>Values</th></tr>
+        <tr><td><code>region</code></td><td><code>efate</code> (default), <code>santo</code>, <code>tanna</code>, <code>all</code></td></tr>
+        <tr><td><code>lang</code></td><td><code>bi</code> Bislama (default) or <code>en</code> English</td></tr>
+        <tr><td><code>lat</code>, <code>lng</code>, <code>zoom</code></td><td>Start the map on one spot, e.g. a hotel</td></tr>
+        <tr><td><code>light</code></td><td><code>green</code> to show only nakamals with kava ready</td></tr>
+      </table></div>
+      <iframe class="preview" src="/embed?region=efate&amp;lang=en" loading="lazy" title="Example: embedded Killim Light map"></iframe>
+    </section>
+
+    <section class="card">
+      <h2>2. Get the data (API)</h2>
+      <p>No key or sign-up needed. Works from any website (CORS is open) and any app. Please don't request more than once a minute per user; the data is cached for 30 seconds anyway.</p>
+      <div class="tablewrap"><table>
+        <tr><th>Address</th><th>What you get</th></tr>
+        <tr><td><code>GET /api/v1/nakamals</code></td><td>JSON list of every nakamal on the map with its light right now</td></tr>
+        <tr><td><code>GET /api/v1/nakamals.geojson</code></td><td>The same as GeoJSON, ready for Leaflet, Mapbox, Google Maps, QGIS or ArcGIS</td></tr>
+        <tr><td><code>GET /api/v1/nakamals/&lt;id&gt;</code></td><td>One nakamal</td></tr>
+        <tr><td><code>?region=santo</code>, <code>?light=green</code></td><td>Filters you can add to the list and GeoJSON</td></tr>
+      </table></div>
+      <h3>Example: one nakamal</h3>
+<pre><code>{
+  "id": "salo",
+  "name": "Salo",
+  "area": "Beverly Hills",
+  "region": "efate",
+  "lat": -17.721762, "lng": 168.325115,
+  "status": "green",            // green | amber | closed | stale | reported
+  "light": "green",             // what the owner set
+  "lightUpdatedAt": "2026-10-20T07:12:00.000Z",
+  "closeTime": "23:00",         // Vanuatu time; the light closes itself then
+  "note": "Fresh Pentecost kava tonight",
+  "kava": { "from": "Pentecost", "strength": "strong" },
+  "prices": [{ "item": "Big shell", "price": "150 VT" }],
+  "rating": { "average": 4.6, "count": 12 },
+  "photos": ["https://killimlightvanuatu.com/img/photo/salo/p….jpg"],
+  "url": "https://killimlightvanuatu.com/n/salo"
+}</code></pre>
+      <p>Use <code>status</code> to colour your pins. <code>stale</code> means the owner hasn't updated the light in 14 hours; <code>reported</code> means several customers said the light is wrong in the last 3 hours.</p>
+    </section>
+
+    <section class="card">
+      <h2>3. Examples</h2>
+      <h3>Show nakamals with kava ready, in plain JavaScript</h3>
+<pre><code>const res = await fetch('https://killimlightvanuatu.com/api/v1/nakamals?light=green');
+const { nakamals } = await res.json();
+nakamals.forEach(n =&gt; console.log(n.name, n.area, n.url));</code></pre>
+      <h3>Add the pins to your own Leaflet map</h3>
+<pre><code>const colours = { green: '#1d7a45', amber: '#a85f00', closed: '#b5382a', stale: '#7d7466', reported: '#7d7466' };
+fetch('https://killimlightvanuatu.com/api/v1/nakamals.geojson')
+  .then(r =&gt; r.json())
+  .then(data =&gt; L.geoJSON(data, {
+    pointToLayer: (f, latlng) =&gt; L.circleMarker(latlng, { radius: 8, color: '#fff', weight: 2, fillOpacity: 1, fillColor: colours[f.properties.status] }),
+    onEachFeature: (f, layer) =&gt; layer.bindPopup(`&lt;b&gt;${f.properties.name}&lt;/b&gt;&lt;br&gt;${f.properties.status}`),
+  }).addTo(map));</code></pre>
+      <h3>Google Maps</h3>
+<pre><code>map.data.loadGeoJson('https://killimlightvanuatu.com/api/v1/nakamals.geojson');</code></pre>
+    </section>
+
+    <section class="card" id="licence">
+      <h2>Licence and credit</h2>
+      <ul>
+        <li><b>Nakamal listings</b> (names, places, lights, kava, prices, ratings): <a class="link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Free to use, including commercially, if you show the credit <b>“Nakamal data: Killim Light”</b> with a link to killimlightvanuatu.com.</li>
+        <li><b>Website code</b>: <a class="link" href="/LICENSE.txt">MIT licence</a>. Copy it, change it, build your own.</li>
+        <li><b>Base map</b> (streets, coastline, place names): © OpenStreetMap contributors, <a class="link" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">ODbL</a>. Keep that credit too.</li>
+        <li><b>Photos</b> belong to the nakamal owners. You may show them next to that nakamal's listing (the API gives you the address); please don't copy them for other uses.</li>
+        <li><b>Never shared</b>: owners' names, phone numbers, emails and logins. The API doesn't contain them.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Questions or a new idea?</h2>
+      <p>Building something for Vanuatu with this data? We'd love to hear about it and to link to it. Contact the Killim Light team.</p>
+    </section>
+  </article>
+</main>
+</body>
+</html>

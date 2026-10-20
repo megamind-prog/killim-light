@@ -1,0 +1,21 @@
+{
+  "name": "Killim Light: nakamals in Vanuatu",
+  "short_name": "Killim Light",
+  "description": "Live kava lights for nakamals in Vanuatu. Wanem nakamal i gat kava tunaet?",
+  "lang": "bi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3efe6",
+  "theme_color": "#5b4a2e",
+  "icons": [
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Setem laet / Set my light", "short_name": "My light", "url": "/owner?quick=1", "icons": [{ "src": "/assets/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Klosap long mi / Near me", "short_name": "Near me", "url": "/?near=1" }
+  ]
+}
