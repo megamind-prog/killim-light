@@ -52,10 +52,12 @@ function popupHtml(n) {
   return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
     <div class="line">${esc(updatedLine(n))}</div>
     ${n.note ? `<div class="note">${esc(n.note)}</div>` : ''}
-    <div class="popbtns"><a class="btn go" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('directions'))}</a>
+    <div class="popbtns"><button class="btn go" type="button" data-route="${esc(n.id)}">➜ ${esc(t('directions'))}</button>
     <button class="btn" type="button" data-pop="${esc(n.id)}">${esc(t('details'))}</button></div></div>`;
 }
 $('map').addEventListener('click', e => {
+  const rb = e.target.closest('[data-route]');
+  if (rb) { map.closePopup(); return startRoute(rb.dataset.route); }
   const b = e.target.closest('[data-pop]'); if (!b) return;
   map.closePopup();
   openDetails(b.dataset.pop, true);
@@ -162,7 +164,7 @@ function itemHtml(n) {
       ${n.photos && n.photos[0] ? `<img class="thumbimg" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
     </button>
     <div class="iactions">
-      <a class="btn go" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('directions'))}</a>
+      <button class="btn go" type="button" data-act="route">➜ ${esc(t('directions'))}</button>
       <button class="ibtn" type="button" data-act="map" aria-label="${esc(t('showOnMap'))}" title="${esc(t('showOnMap'))}">◎</button>
       <button class="ibtn" type="button" data-act="share" aria-label="${esc(t('share'))}" title="${esc(t('share'))}">↗</button>
       <button class="ibtn fav" type="button" data-fav aria-pressed="${favs.has(n.id)}" aria-label="${esc(t('favourite'))}" title="${esc(t('favourite'))}">${favs.has(n.id) ? '★' : '☆'}</button>
@@ -246,6 +248,7 @@ $('list').addEventListener('click', e => {
   const act = a.dataset.act;
   if (act === 'toggle') { openId === id ? (openId = null, renderList()) : openDetails(id, false); }
   if (act === 'map') showOnMap(id);
+  if (act === 'route') startRoute(id);
   if (act === 'share') shareNakamal(n);
   if (act === 'unrate') rate(id, null, '');
   if (act === 'report') { const b = item.querySelector('.reportbox'); b.hidden = !b.hidden; }
@@ -299,13 +302,104 @@ async function toggleAlert(id) {
 }
 function urlB64(s) { const p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); }
 
+// ---------- directions inside the app, on our own road map ----------
+const WALK = 4.5, DRIVE = 30;                 // km/h, rough Vanuatu averages
+let routeLayer = null, routeFor = null, watchId = null, lastRoute = null, lastReroute = 0;
+const card = $('routeCard');
+const mins = (m, kmh) => Math.max(1, Math.round(m / 1000 / kmh * 60));
+function routeCardHtml(n, body, btns = '') {
+  return `<div class="rchead"><b>${esc(t('routeTo', { name: n.name }))}</b><button class="ibtn" type="button" data-rc="end" aria-label="${esc(t('routeEnd'))}">✕</button></div>
+    ${body}<div class="rcbtns">${btns}</div>
+    <a class="link small" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('routeOtherApp'))}</a>`;
+}
+function clearRoute() {
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+  routeFor = null; lastRoute = null; card.hidden = true; document.body.classList.remove('routing');
+}
+function placeMe(p) {
+  if (meMarker) meMarker.setLatLng([p.lat, p.lng]);
+  else meMarker = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'me', html: '<div></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), interactive: false, keyboard: false, zIndexOffset: 3000 }).addTo(map);
+}
+async function startRoute(id) {
+  const n = nakamals.get(id); if (!n) return;
+  clearRoute();
+  routeFor = id; selected = id; renderList(); renderMap(); countView(id);
+  if (phone()) setSheet('peek');
+  document.body.classList.add('routing');
+  card.hidden = false;
+  card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeFinding'))}</p>`);
+  let here;
+  try { here = await locate(); me = here; placeMe(here); }
+  catch { if (routeFor !== id) return; card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeLoc'))}</p>`, `<button class="btn go" type="button" data-rc="retry">${esc(t('routeRetry'))}</button>`); return; }
+  if (routeFor !== id) return;
+  await drawRoute(n, here, true);
+}
+async function drawRoute(n, here, fit) {
+  const g = islandOf(n);
+  if (groups.length && islandOf(here) !== g) {
+    card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeIsland'))}</p>`);
+    map.flyTo([n.lat, n.lng], 14); return;
+  }
+  const r = await KLRoute.route(g, [here.lat, here.lng], [n.lat, n.lng]);
+  if (routeFor !== n.id) return;
+  if (!r) { card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeNone'))}</p>`); return; }
+  lastRoute = r;
+  if (routeLayer) map.removeLayer(routeLayer);
+  const line = [[here.lat, here.lng], ...r.pts, [n.lat, n.lng]];
+  routeLayer = L.layerGroup([
+    L.polyline(r.pts, { color: '#ffffff', weight: 10, opacity: .95, lineCap: 'round', lineJoin: 'round', interactive: false }),
+    L.polyline(r.pts, { color: '#2f5bd3', weight: 6, opacity: 1, lineCap: 'round', lineJoin: 'round', interactive: false }),
+    L.polyline([[here.lat, here.lng], r.pts[0]], { color: '#2f5bd3', weight: 3, dashArray: '2 7', interactive: false }),
+    L.polyline([r.pts[r.pts.length - 1], [n.lat, n.lng]], { color: '#2f5bd3', weight: 3, dashArray: '2 7', interactive: false }),
+  ]).addTo(map);
+  if (fit) map.fitBounds(L.latLngBounds(line), { paddingTopLeft: [30, 70], paddingBottomRight: [30, phone() ? 330 : 270], maxZoom: 17 });
+  paintRouteCard(n, r.total);
+}
+function paintRouteCard(n, left) {
+  const r = lastRoute; if (!r) return;
+  const off = r.offEnd > 150 ? `<p class="hint">${esc(t('routeOff', { d: fmtKm(r.offEnd / 1000) }))}</p>` : '';
+  const following = watchId != null;
+  card.innerHTML = routeCardHtml(n,
+    `<p class="rcbig">${esc(following ? t('routeLeft', { d: fmtKm(left / 1000) }) : fmtKm(r.total / 1000))}</p>
+     <p class="rcline">${esc(t('routeSum', { d: fmtKm(left / 1000), w: mins(left, WALK), c: mins(left, DRIVE) }))}</p>${off}
+     <p class="hint">${esc(t('routeNote'))}</p>`,
+    following ? `<span class="pill l-green"><span class="dot"></span>${esc(t('routeFollowing'))}</span>` : `<button class="btn go" type="button" data-rc="follow">${esc(t('routeFollow'))}</button>`);
+}
+// Follow me: keep the blue dot on the phone's position, count down the distance, re-plan if they take another road.
+function follow() {
+  const n = nakamals.get(routeFor); if (!n || !navigator.geolocation) return;
+  watchId = navigator.geolocation.watchPosition(async pos => {
+    const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    me = p; placeMe(p);
+    map.panTo([p.lat, p.lng], { animate: true });
+    const toGo = KLRoute.metres([p.lat, p.lng], [n.lat, n.lng]);
+    if (toGo < 40) { const name = n.name; clearRoute(); toast(t('routeArrived', { name })); return; }
+    const r = lastRoute;
+    let nearest = Infinity, idx = 0;
+    r.pts.forEach((q, i) => { const d = KLRoute.metres([p.lat, p.lng], q); if (d < nearest) { nearest = d; idx = i; } });
+    if (nearest > 80 && Date.now() - lastReroute > 15000) { lastReroute = Date.now(); await drawRoute(n, p, false); return; }
+    let left = r.offEnd;
+    for (let i = idx; i < r.pts.length - 1; i++) left += KLRoute.metres(r.pts[i], r.pts[i + 1]);
+    paintRouteCard(n, left + nearest);
+  }, () => toast(t('locDenied')), { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  map.setZoom(Math.max(map.getZoom(), 17));
+  paintRouteCard(n, lastRoute.total);
+}
+card.addEventListener('click', e => {
+  const b = e.target.closest('[data-rc]'); if (!b) return;
+  const a = b.dataset.rc;
+  if (a === 'end') clearRoute();
+  if (a === 'retry' && routeFor) startRoute(routeFor);
+  if (a === 'follow') follow();
+});
+
 // ---------- near me ----------
 async function findMe(sort) {
   toast(t('locating'));
   try {
     me = await locate();
-    if (meMarker) meMarker.setLatLng([me.lat, me.lng]);
-    else meMarker = L.circleMarker([me.lat, me.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#3552c4', fillOpacity: 1 }).addTo(map);
+    placeMe(me);
     map.flyTo([me.lat, me.lng], 15, { duration: .8 });
     if (sort) { sortBy = 'near'; $('sort').value = 'near'; }
     region = 'all'; paintIslands(); renderList();

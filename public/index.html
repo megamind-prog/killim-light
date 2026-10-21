@@ -65,6 +65,7 @@ if (/(^|[#&])(confirmation_token|recovery_token|invite_token|email_change_token|
     <div class="map" id="map" role="region" aria-label="Map of Vanuatu with nakamals"></div>
     <div class="zoomhint" id="zoomHint" hidden data-t="zoomHint">Zoom in to see tonight's kava lights</div>
     <button class="mapbtn" type="button" id="locBtn" data-t="nearMe">📍 Near me</button>
+    <div class="routecard" id="routeCard" hidden aria-live="polite"></div>
     <div class="maplegend" aria-label="Legend">
       <span class="l-green"><span class="dot"></span><span data-t="ls.green">Kava ready</span></span>
       <span class="l-amber"><span class="dot"></span><span data-t="ls.amber">Low</span></span>
@@ -77,6 +78,7 @@ if (/(^|[#&])(confirmation_token|recovery_token|invite_token|email_change_token|
 <script src="/assets/leaflet/leaflet.js"></script>
 <script src="/assets/i18n.js"></script>
 <script src="/assets/common.js"></script>
+<script src="/assets/route.js"></script>
 <script src="/assets/public.js"></script>
 </body>
 </html>
