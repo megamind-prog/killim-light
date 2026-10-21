@@ -9,33 +9,28 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <link rel="stylesheet" href="/assets/app.css">
-<style>
-  .doc { max-width: 760px; display: grid; gap: 18px; margin-top: 18px; }
-  .doc h2 { font: 800 1.45rem/1.15 var(--f-display); margin: 8px 0 0; text-wrap: balance; }
-  .doc h3 { font: 700 1.1rem var(--f-display); margin: 0; }
-  .doc p, .doc li { line-height: 1.6; max-width: 68ch; }
-  .doc pre { background: #1f1b14; color: #f1ece2; padding: 14px 16px; border-radius: 12px; overflow-x: auto; font-size: .85rem; line-height: 1.5; margin: 0; }
-  .doc code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
-  .doc p code, .doc li code, .doc td code { background: var(--field); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: .88em; }
-  .doc table { width: 100%; border-collapse: collapse; font-size: .92rem; }
-  .doc th, .doc td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  .tablewrap { overflow-x: auto; }
-  .preview { width: 100%; height: 340px; border: 1px solid var(--line); border-radius: 14px; }
-</style>
+
 </head>
 <body>
-<header class="appbar">
-  <div class="wrap">
-    <a href="/" class="brandlink"><img class="logo" src="/assets/icon.svg" alt=""></a>
-    <div class="grow"><h1>Killim Light</h1><div class="sub">For developers</div></div>
-  </div>
+<header class="topbar">
+  <a href="/" class="brand"><img class="logo" src="/assets/icon.svg" alt=""><span>Killim Light</span></a>
+  <span class="section">Developers</span>
+  <nav class="topnav"><a class="tbtn" href="/">Open the map</a></nav>
 </header>
 <main class="wrap">
-  <a class="link backmap" href="/">← Back to the map</a>
   <article class="doc">
     <section class="card">
       <h2>Use our nakamal map in your website or app</h2>
       <p>Killim Light shows which nakamals in Vanuatu have kava ready, live, set by the owners themselves. The map and the data are open: tourism sites, news sites, other Vanuatu apps and anyone else can show them for free, as long as they credit Killim Light.</p>
+    </section>
+
+    <section class="card quick">
+      <h2>Quick start</h2>
+      <p>Show the live map on your page:</p>
+<pre><code>&lt;iframe src="https://killimlightvanuatu.com/embed?lang=en" width="100%" height="420" style="border:0" title="Nakamal map"&gt;&lt;/iframe&gt;</code></pre>
+      <p>Or get the data in your own code:</p>
+<pre><code>const { nakamals } = await (await fetch('https://killimlightvanuatu.com/api/v1/nakamals')).json();</code></pre>
+      <p class="hint">No key, no sign-up, free. Just credit “Nakamal data: Killim Light”.</p>
     </section>
 
     <section class="card">
@@ -103,6 +98,16 @@ fetch('https://killimlightvanuatu.com/api/v1/nakamals.geojson')
 <pre><code>map.data.loadGeoJson('https://killimlightvanuatu.com/api/v1/nakamals.geojson');</code></pre>
     </section>
 
+    <section class="card">
+      <h2>Versions, limits and uptime</h2>
+      <ul>
+        <li><b>Version 1</b> lives at <code>/api/v1/</code>. We won't remove or rename fields in v1; new fields may be added, so ignore ones you don't know. Breaking changes would get a new <code>/api/v2/</code>, announced here first.</li>
+        <li><b>Limits</b>: the data refreshes every 30 seconds, so there's no need to ask more than once a minute per user. For server-side jobs, cache the response for at least 30 seconds. If you expect more than 10,000 requests a day, tell us first.</li>
+        <li><b>Errors</b>: an unknown nakamal id returns <code>404</code> with <code>{"error": "Not found"}</code>. Anything else non-200 means try again in a minute.</li>
+        <li><b>Times</b> are ISO 8601 in UTC; Vanuatu is UTC+11 all year. <code>closeTime</code> is local Vanuatu time.</li>
+      </ul>
+    </section>
+
     <section class="card" id="licence">
       <h2>Licence and credit</h2>
       <ul>
@@ -116,9 +121,24 @@ fetch('https://killimlightvanuatu.com/api/v1/nakamals.geojson')
 
     <section class="card">
       <h2>Questions or a new idea?</h2>
-      <p>Building something for Vanuatu with this data? We'd love to hear about it and to link to it. Contact the Killim Light team.</p>
+      <p>Building something for Vanuatu with this data? We'd love to hear about it and to link to it. Email <a class="link" href="mailto:hello@killimlightvanuatu.com">hello@killimlightvanuatu.com</a>.</p>
     </section>
   </article>
 </main>
+<footer class="sitefoot"><a href="/">Map</a> · <a href="/owner">For owners</a> · <a href="/developers">Developers</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer>
+<script>
+// A "Copy" button on every code sample.
+document.querySelectorAll('.doc pre').forEach(pre => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'copybtn'; b.textContent = 'Copy';
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(pre.innerText); b.textContent = 'Copied ✓'; }
+    catch { b.textContent = 'Select and copy'; }
+    setTimeout(() => (b.textContent = 'Copy'), 1800);
+  };
+  const wrap = document.createElement('div'); wrap.className = 'codewrap';
+  pre.before(wrap); wrap.append(pre, b); pre.classList.add('hascopy');
+});
+</script>
 </body>
 </html>

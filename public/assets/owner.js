@@ -8,7 +8,8 @@ const MAX_PHOTOS = 6;
 const ISLANDS = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
 const box = $('box');
 let state = null;           // { user, phoneLogin, contact, profile, nakamals }
-let picker = null, editId = null, adding = false, auth = null;
+let picker = null, editId = null, adding = false, auth = null, editTab = 'photos', showProfile = false;
+let reg = null;               // registration in progress: { step, data, id }
 let quick = new URLSearchParams(location.search).get('quick') === '1';
 
 applyStatic();
@@ -45,21 +46,19 @@ async function act(body, okText, msgId) {
 function render() {
   if (picker) { picker.remove(); picker = null; }
   const mine = state.nakamals;
-  if (!mine.length || adding) return renderRegister(mine.length > 0);
+  if (!mine.length || adding || reg) return renderRegister(mine.length > (reg && reg.id ? 1 : 0));
   if (quick) return renderQuick(mine);
   const ed = editId && mine.find(n => n.id === editId);
   if (ed) return renderEdit(ed);
   editId = null;
-  const pending = mine.filter(n => !n.approved).length;
   box.innerHTML = `
-    <div class="card"><div class="row" style="align-items:center">
-      <div><h3>${esc(t('myNakamals'))}</h3><p class="hint">${esc(t('countMine', { n: mine.length }))}${pending ? esc(t('waitingVisit', { n: pending })) : ''}. ${esc(t('setEvening'))}</p></div>
-      <button class="btn" type="button" id="addBtn" style="flex:0 0 auto">${esc(t('addNakamal'))}</button></div>
-      <a class="btn quickbtn" href="?quick=1">${esc(t('quickOpen'))}</a></div>
-    ${profileCard()}
+    <div class="ohead"><h3>${esc(t('myNakamals'))}</h3><button class="btn" type="button" id="addBtn">${esc(t('addNakamal'))}</button></div>
     ${mine.map(ownerCard).join('')}
-    <p class="hint">${esc(t('staleNote'))}</p>`;
-  $('addBtn').onclick = () => { adding = true; render(); scrollTo({ top: 0 }); };
+    <details class="card" ${showProfile ? 'open' : ''} id="profBox"><summary><b>${esc(t('myProfile'))}</b></summary>${profileCard()}</details>
+    <p class="hint">${esc(t('staleNote'))}</p>
+    <p class="hint"><a class="link" href="?quick=1">${esc(t('quickOpen'))}</a> · ${esc(t('quickTip'))}</p>`;
+  $('addBtn').onclick = () => { adding = true; reg = null; render(); scrollTo({ top: 0 }); };
+  $('profBox').ontoggle = e => { showProfile = e.target.open; };
   wireProfile();
   wireCards(mine);
 }
@@ -76,7 +75,7 @@ function renderQuick(mine) {
 
 const pill = n => n.approved ? `<span class="pill l-${n.shown}"><span class="dot">${LIGHT[n.shown].sym}</span>${esc(t('customersSee', { light: LIGHT[n.shown].label }))}</span>`
   : `<span class="pill l-pending"><span class="dot"></span>${esc(t('pendingVer'))}</span>`;
-const lightButtons = n => `<div class="lights small" role="group" aria-label="${esc(t('setLightFor', { name: n.name }))}">
+const lightButtons = (n, big) => `<div class="lights ${big ? '' : 'small'}" role="group" aria-label="${esc(t('setLightFor', { name: n.name }))}">
   <button class="light l-green" data-light="green" aria-pressed="${n.shown === 'green'}"><span class="bulb"></span>${esc(t('l.green'))}</button>
   <button class="light l-amber" data-light="amber" aria-pressed="${n.shown === 'amber'}"><span class="bulb"></span>${esc(t('l.amber'))}</button>
   <button class="light l-closed" data-light="closed" aria-pressed="${n.shown === 'closed'}"><span class="bulb">✕</span>${esc(t('l.closed'))}</button></div>`;
@@ -92,31 +91,33 @@ function wireCards(mine) {
     const note = card.querySelector('[data-note]');
     if (note) note.onclick = async () => { if (await act({ action: 'note', id, note: clean(card.querySelector('input').value, 120) }, t('noteSaved'))) render(); };
     const ed = card.querySelector('[data-edit]');
-    if (ed) ed.onclick = () => { editId = id; render(); scrollTo({ top: 0 }); };
+    if (ed) ed.onclick = () => { editId = id; editTab = 'photos'; render(); scrollTo({ top: 0 }); };
   });
 }
 
 function ownerCard(n) {
+  const phone = (state.contact || {}).phone;
+  const wait = n.visitDate ? t('waitDate', { date: n.visitDate }) : phone ? t('waitCall', { phone }) : t('waitCallNo');
   return `<div class="card ocard" data-card="${esc(n.id)}">
-    ${n.photos && n.photos.length ? `<img class="cover" src="${esc(n.photos[0].url)}" alt="${esc(n.name)}" loading="lazy">` : ''}
-    <div class="top" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+    <div class="ocardtop">
+      ${n.photos && n.photos.length ? `<img class="othumb" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
       <div style="flex:1;min-width:0"><h3>${esc(n.name)}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}</div>${pill(n)}
     </div>
-    ${n.approved ? '' : `<p class="hint pendingnote">${n.visitDate ? t('visitOn', { date: esc(n.visitDate) }) : esc(t('visitCall'))}</p>`}
+    ${n.approved ? '' : `<p class="hint pendingnote">${esc(wait)}</p>`}
     ${n.reports ? `<p class="hint pendingnote">${esc(t('reportsNow', { n: n.reports.count, what: reportWhat(n.reports) }))}</p>` : ''}
-    ${lightButtons(n)}
-    <div class="line">${esc(updatedLine(n))}</div>
+    <p class="lightq">${esc(t('lightQ'))}</p>
+    ${lightButtons(n, true)}
+    <div class="line">${esc(updatedLine(n))}${n.approved ? ' · ' + esc(t('viewsWeek', { n: n.viewsWeek || 0 })) : ''}</div>
     <div class="prow2"><input class="field" id="note-${esc(n.id)}" maxlength="120" value="${esc(n.note || '')}" placeholder="${esc(t('notePh'))}" aria-label="${esc(t('noteAria'))}">
       <button class="btn" type="button" data-note>${esc(t('saveNote'))}</button></div>
-    ${n.approved ? `<div class="line">${esc(t('viewsWeek', { n: n.viewsWeek || 0 }))}</div>` : ''}
-    <div class="row-btns"><button class="btn" type="button" data-edit>${esc(n.photos && n.photos.length ? t('editAll') : t('editAdd'))}</button></div>
+    <div class="row-btns"><button class="btn" type="button" data-edit>✎ ${esc(t('editPage'))}</button></div>
   </div>`;
 }
 
 // ---------- profile picture + the name customers see ----------
 function profileCard() {
   const pr = state.profile || {};
-  return `<div class="card"><h2>${esc(t('yourProfile'))}</h2>
+  return `<div class="profbody">
     <div class="profile">
       <div class="avatar big">${pr.avatar ? `<img src="${esc(pr.avatar)}" alt="">` : '<span aria-hidden="true">👤</span>'}</div>
       <div class="grow" style="display:grid;gap:8px;min-width:0">
@@ -182,7 +183,7 @@ function kavaFields(n) {
 const readKava = () => ({ kavaFrom: $('kFrom').value, strength: $('kStr').value, closeTime: $('kClose').value });
 
 function detailFields(n, withContact) {
-  const c = state.contact || {};
+  const c = (reg && reg.contact) || state.contact || {};
   return `
     <label for="dName">${esc(t('nakName'))}<input class="field" id="dName" maxlength="80" required value="${esc(n.name || '')}" placeholder="${esc(t('nakNamePh'))}"></label>
     <label for="dArea">${esc(t('area'))}<input class="field" id="dArea" maxlength="80" value="${esc(n.area || '')}" placeholder="${esc(t('areaPh'))}"></label>
@@ -202,68 +203,115 @@ const readDetails = () => {
   return { name: clean($('dName').value, 80), area: clean($('dArea').value, 80), about: clean($('dAbout').value, 400), hours: clean($('dHours').value, 80), lat: loc && loc.lat, lng: loc && loc.lng };
 };
 
+// ---------- registration: 3 short steps ----------
+function stepsBar(step) {
+  return `<div class="stepsbar" aria-label="${esc(t('stepOf', { a: step }))}">
+    ${[1, 2, 3].map(i => `<div class="stp ${i < step ? 'done' : i === step ? 'now' : ''}"><span>${i < step ? '✓' : i}</span><b>${esc(t('step' + i))}</b></div>`).join('')}
+  </div><p class="hint">${esc(t('stepOf', { a: step }))}</p>`;
+}
 function renderRegister(hasOthers) {
+  reg ||= { step: 1, data: {}, id: null };
   const needContact = !(state.contact && state.contact.owner && state.contact.phone);
-  box.innerHTML = `
-    ${hasOthers ? `<button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>` : ''}
+  const head = `${hasOthers ? `<button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>` : ''}
     <div class="card"><h3>${esc(hasOthers ? t('regAnother') : t('regTitle'))}</h3>
-      <p class="hint">${esc(t('regHint'))}${hasOthers ? esc(t('regHintMore')) : ''}</p></div>
-    <form class="card" id="regForm">${detailFields({}, needContact)}
-      <h2>${esc(t('kavaDetails'))}</h2>${kavaFields({})}
+      <p class="hint">${esc(t('regHint'))}${hasOthers ? esc(t('regHintMore')) : ''}</p>${stepsBar(reg.step)}</div>`;
+  const d = reg.data;
+  if (reg.step === 1) {
+    box.innerHTML = head + `<form class="card" id="regForm">${detailFields(d, needContact)}
+      <button class="primary" type="submit">${esc(t('next'))}</button><p class="msg" id="regMsg"></p></form>`;
+    picker = makePicker($('picker'), $('locText'), d.lat ? [d.lat, d.lng] : null, $('useLoc'));
+    $('regForm').onsubmit = e => {
+      e.preventDefault();
+      const x = readDetails();
+      if (x.name.length < 2) return setMsg('regMsg', t('enterName'), false);
+      if (!x.lat) return setMsg('regMsg', t('tapMap'), false);
+      if (needContact) {
+        const c = { owner: clean($('cOwner').value, 80), phone: clean($('cPhone').value, 30) };
+        if (c.owner.length < 2 || c.phone.replace(/\D/g, '').length < 5) return setMsg('regMsg', t('needContact'), false);
+        reg.contact = c;
+      }
+      Object.assign(d, x); reg.step = 2; render(); scrollTo({ top: 0 });
+    };
+  } else if (reg.step === 2) {
+    box.innerHTML = head + `<form class="card" id="regForm"><h2>${esc(t('kavaDetails'))}</h2>${kavaFields(d)}
+      <h2>${esc(t('prices'))}</h2><div id="prows">${priceRows(d.prices)}</div>
+      <div class="row-btns"><button class="btn" type="button" id="addPrice">${esc(t('addPrice'))}</button></div>
       <p class="hint">${esc(t('regTerms'))}</p>
-      <button class="primary" type="submit">${esc(t('submit'))}</button>
-      <p class="msg" id="regMsg"></p></form>`;
-  picker = makePicker($('picker'), $('locText'), null, $('useLoc'));
-  if ($('backList')) $('backList').onclick = () => { adding = false; render(); };
-  $('regForm').onsubmit = async e => {
-    e.preventDefault();
-    const d = readDetails();
-    if (d.name.length < 2) return setMsg('regMsg', t('enterName'), false);
-    if (!d.lat) return setMsg('regMsg', t('tapMap'), false);
-    const body = { action: 'register', ...d, ...readKava() };
-    if (needContact) body.contact = { owner: clean($('cOwner').value, 80), phone: clean($('cPhone').value, 30) };
-    const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
-    const r = await act(body, t('submitted'), 'regMsg');
-    btn.disabled = false;
-    if (r) { adding = false; render(); scrollTo({ top: 0 }); }
-  };
+      <div class="row-btns"><button class="btn" type="button" id="prevStep">${esc(t('prevStep'))}</button><button class="primary grow" type="submit">${esc(t('submit'))}</button></div>
+      <p class="msg" id="priceMsg"></p><p class="msg" id="regMsg"></p></form>`;
+    wirePrices();
+    $('prevStep').onclick = () => { Object.assign(d, readKava(), { prices: readPrices() }); reg.step = 1; render(); };
+    $('regForm').onsubmit = async e => {
+      e.preventDefault();
+      Object.assign(d, readKava(), { prices: readPrices() });
+      const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+      const body = { action: 'register', name: d.name, area: d.area, about: d.about, hours: d.hours, lat: d.lat, lng: d.lng, kavaFrom: d.kavaFrom, strength: d.strength, closeTime: d.closeTime };
+      if (reg.contact) body.contact = reg.contact;
+      const r = await act(body, null, 'regMsg');
+      if (r && d.prices.length) await act({ action: 'prices', id: r.id, prices: d.prices }, null, 'regMsg');
+      btn.disabled = false;
+      if (r) { reg.id = r.id; reg.step = 3; toast(t('submitted')); render(); scrollTo({ top: 0 }); }
+    };
+  } else {
+    const n = state.nakamals.find(x => x.id === reg.id) || { id: reg.id, photos: [] };
+    box.innerHTML = head + `<div class="card"><p>${esc(t('step3Hint'))}</p></div>${photosCard(n)}
+      <div class="row-btns"><button class="primary grow" type="button" id="regDone">${esc((n.photos || []).length ? t('finish') : t('skipPhotos'))}</button></div>`;
+    wirePhotos(n);
+    $('regDone').onclick = () => { adding = false; reg = null; render(); scrollTo({ top: 0 }); };
+  }
+  if ($('backList')) $('backList').onclick = () => { adding = false; reg = null; render(); };
 }
 
+// ---------- edit one nakamal: four short tabs instead of one long page ----------
 function renderEdit(n) {
-  box.innerHTML = `
-    <button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>
-    <div class="card"><h3>${esc(n.name)}</h3><p class="hint">${esc(n.approved ? t('onMap') : t('pendingVer'))}</p></div>
-    ${photosCard(n)}
-    <form class="card" id="kavaForm"><h2>${esc(t('kavaDetails'))}</h2>${kavaFields(n)}
-      <button class="primary" type="submit">${esc(t('saveKava'))}</button><p class="msg" id="kavaMsg"></p></form>
-    <form class="card" id="priceForm"><h2>${esc(t('prices'))}</h2>
-      <div id="prows">${priceRows(n.prices)}</div>
+  const tabs = [['photos', t('tabPhotos')], ['kava', t('tabKava')], ['details', t('tabDetails')], ['more', t('tabMore')]];
+  let body = '';
+  if (editTab === 'photos') body = photosCard(n);
+  if (editTab === 'kava') body = `<form class="card" id="kavaForm"><h2>${esc(t('kavaDetails'))}</h2>${kavaFields(n)}
+      <h2>${esc(t('prices'))}</h2><div id="prows">${priceRows(n.prices)}</div>
       <div class="row-btns"><button class="btn" type="button" id="addPrice">${esc(t('addPrice'))}</button></div>
-      <button class="primary" type="submit">${esc(t('savePrices'))}</button><p class="msg" id="priceMsg"></p></form>
-    <form class="card" id="detailsForm"><h2>${esc(t('pageDetails'))}</h2>${detailFields(n)}
-      <button class="primary" type="submit">${esc(t('savePage'))}</button><p class="msg" id="detailsMsg"></p></form>
-    <div class="card"><h2>${esc(t('yourContact'))}</h2>
+      <button class="primary" type="submit">${esc(t('save'))}</button><p class="msg" id="priceMsg"></p></form>`;
+  if (editTab === 'details') body = `<form class="card" id="detailsForm">${detailFields(n)}
+      <button class="primary" type="submit">${esc(t('savePage'))}</button><p class="msg" id="detailsMsg"></p></form>`;
+  if (editTab === 'more') body = `<div class="card"><h2>${esc(t('yourContact'))}</h2>
       <div class="row">
         <label for="cOwner2">${esc(t('yourName'))}<input class="field" id="cOwner2" maxlength="80" value="${esc((state.contact || {}).owner || '')}"></label>
         <label for="cPhone2">${esc(t('phone'))}<input class="field" id="cPhone2" type="tel" maxlength="30" value="${esc((state.contact || {}).phone || '')}"></label></div>
+      <p class="hint">${esc(t('ownerPrivate'))}</p>
       <div class="row-btns"><button class="btn" type="button" id="saveContact">${esc(t('saveContact'))}</button></div><p class="msg" id="contactMsg"></p></div>
     <div class="card"><h2>${esc(t('removeTitle'))}</h2><p class="hint">${esc(t('removeHint'))}</p>
       <div class="row-btns"><button class="btn danger" id="delBtn" type="button">${esc(t('removeBtn', { name: n.name }))}</button><button class="btn danger" id="delYes" type="button" hidden>${esc(t('removeYes'))}</button></div></div>`;
-  picker = makePicker($('picker'), $('locText'), [n.lat, n.lng], $('useLoc'));
+  box.innerHTML = `
+    <button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>
+    <div class="card"><div class="ocardtop"><h3 style="flex:1">${esc(n.name)}</h3>${pill(n)}</div>
+      <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${editTab === k}">${esc(l)}</button>`).join('')}</div></div>
+    ${body}`;
+  box.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { editTab = b.dataset.tab; render(); });
   $('backList').onclick = () => { editId = null; render(); };
-  wirePhotos(n);
-  wirePrices();
-  $('kavaForm').onsubmit = async e => { e.preventDefault(); if (await act({ action: 'kava', id: n.id, ...readKava() }, t('kavaSaved'), 'kavaMsg')) setMsg('kavaMsg', t('saved'), true); };
-  $('priceForm').onsubmit = async e => { e.preventDefault(); if (await act({ action: 'prices', id: n.id, prices: readPrices() }, t('pricesSaved'), 'priceMsg')) setMsg('priceMsg', t('saved'), true); };
-  $('detailsForm').onsubmit = async e => {
-    e.preventDefault();
-    const d = readDetails();
-    if (d.name.length < 2) return setMsg('detailsMsg', t('enterName'), false);
-    if (await act({ action: 'update', id: n.id, ...d }, t('pageSaved'), 'detailsMsg')) setMsg('detailsMsg', t('saved'), true);
-  };
-  $('saveContact').onclick = async () => { if (await act({ action: 'contact', contact: { owner: clean($('cOwner2').value, 80), phone: clean($('cPhone2').value, 30) } }, t('contactSaved'), 'contactMsg')) setMsg('contactMsg', t('saved'), true); };
-  $('delBtn').onclick = () => { $('delYes').hidden = false; };
-  $('delYes').onclick = async () => { if (await act({ action: 'remove', id: n.id }, t('removed', { name: n.name }))) { editId = null; render(); } };
+  if (editTab === 'photos') wirePhotos(n);
+  if (editTab === 'kava') {
+    wirePrices();
+    $('kavaForm').onsubmit = async e => {
+      e.preventDefault();
+      const a = await act({ action: 'kava', id: n.id, ...readKava() }, null, 'priceMsg');
+      const b = a && await act({ action: 'prices', id: n.id, prices: readPrices() }, t('saved'), 'priceMsg');
+      if (b) setMsg('priceMsg', t('saved'), true);
+    };
+  }
+  if (editTab === 'details') {
+    picker = makePicker($('picker'), $('locText'), [n.lat, n.lng], $('useLoc'));
+    $('detailsForm').onsubmit = async e => {
+      e.preventDefault();
+      const d = readDetails();
+      if (d.name.length < 2) return setMsg('detailsMsg', t('enterName'), false);
+      if (await act({ action: 'update', id: n.id, ...d }, t('pageSaved'), 'detailsMsg')) setMsg('detailsMsg', t('saved'), true);
+    };
+  }
+  if (editTab === 'more') {
+    $('saveContact').onclick = async () => { if (await act({ action: 'contact', contact: { owner: clean($('cOwner2').value, 80), phone: clean($('cPhone2').value, 30) } }, t('contactSaved'), 'contactMsg')) setMsg('contactMsg', t('saved'), true); };
+    $('delBtn').onclick = () => { $('delYes').hidden = false; };
+    $('delYes').onclick = async () => { if (await act({ action: 'remove', id: n.id }, t('removed', { name: n.name }))) { editId = null; render(); } };
+  }
 }
 
 function priceRows(prices) {

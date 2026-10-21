@@ -1,12 +1,12 @@
 // Team page (/chief): full control. Verify, add, edit and delete nakamals; see and manage every account;
 // make phone + PIN logins; deal with customer reports; move nakamals between logins; switch comments on/off.
 (() => {
-const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, directions, toast, makePicker } = KL;
+const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, directions, toast, makePicker, ago } = KL;
 const { start, authed, signOut } = KLAuthUI;
 const box = $('box');
 const KAVA = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
-let list = [], accounts = [], myId = null, settings = { comments: false }, filter = 'pending', lastLogin = null;
-let view = 'nak', accSearch = '', nakSearch = '', editing = null, picker = null;
+let list = [], accounts = [], log = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
+let view = 'today', accSearch = '', nakSearch = '', editing = null, picker = null;
 
 start({
   box, allowSignup: false, title: () => 'Team login', intro: () => 'For the Killim Light team only.',
@@ -38,88 +38,141 @@ async function act(body, okText) {
   } catch (e) { toast(e.message); return null; }
 }
 
-function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; settings = r.settings || settings; }
+function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; settings = r.settings || settings; }
+const wide = () => matchMedia('(min-width: 900px)').matches;
 const day = v => v ? new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
 function render() {
   if (picker) { picker.remove(); picker = null; }
-  const tabs = `<div class="card"><div class="tools" role="tablist" aria-label="Team page">
-      <button class="chip" data-view="nak" aria-pressed="${view === 'nak'}">Nakamals (${list.length})</button>
-      <button class="chip" data-view="acc" aria-pressed="${view === 'acc'}">Accounts (${accounts.length})</button>
-      <button class="chip" data-view="add" aria-pressed="${view === 'add'}">+ Add a nakamal</button>
-      <button class="chip" id="csv" type="button">⬇ Download everything</button></div></div>`;
+  const pending = list.filter(n => !n.status.approved), reported = list.filter(n => n.reports);
+  const todo = pending.length + reported.length;
+  const tabs = [['today', `Today${todo ? ` <span class="badge">${todo}</span>` : ''}`], ['nak', `Nakamals <small>${list.length}</small>`], ['acc', `Accounts <small>${accounts.length}</small>`],
+    ['log', 'Activity'], ['tools', 'Tools & settings']];
+  const nav = `<nav class="chiefnav" role="tablist" aria-label="Team page">${tabs.map(([k, l]) => `<button type="button" role="tab" data-view="${k}" aria-selected="${view === k}">${l}</button>`).join('')}
+      <button type="button" class="addbtn" data-view="add" aria-selected="${view === 'add'}">+ Add nakamal</button></nav>`;
   const loginCard = lastLogin ? `<div class="card logincard"><h2>${lastLogin.reset ? 'New PIN' : 'New phone login'}: give this to the owner</h2>
       <div class="bigcode"><span>Phone <b>${esc(lastLogin.phone)}</b></span><span>PIN <b>${esc(lastLogin.pin)}</b></span></div>
       <p class="hint">They log in on the owner page by typing their phone number and this PIN. Write it down for them now; it isn't shown again.</p>
       <button class="link" type="button" id="hideLogin">Done</button></div>` : '';
-  if (view === 'acc') box.innerHTML = tabs + loginCard + accountsHtml();
-  else if (view === 'add') box.innerHTML = tabs + addHtml();
-  else box.innerHTML = tabs + loginCard + nakHtml();
-  box.querySelectorAll('[data-view]').forEach(c => c.onclick = () => { view = c.dataset.view; editing = null; render(); });
-  $('csv').onclick = downloadAll;
+  const body = view === 'acc' ? accountsHtml() : view === 'add' ? addHtml() : view === 'log' ? logHtml(log) : view === 'tools' ? toolsHtml() : view === 'nak' ? nakHtml() : todayHtml();
+  box.innerHTML = nav + loginCard + body + (drawer && view !== 'add' ? drawerHtml() : '');
+  box.querySelectorAll('[data-view]').forEach(c => c.onclick = () => { view = c.dataset.view; editing = null; drawer = null; render(); scrollTo({ top: 0 }); });
   if ($('hideLogin')) $('hideLogin').onclick = () => { lastLogin = null; render(); };
+  box.querySelectorAll('[data-go-acc]').forEach(b => b.onclick = () => { view = 'acc'; accSearch = b.dataset.goAcc; drawer = null; render(); });
+  box.querySelectorAll('[data-open]').forEach(r => r.onclick = e => { if (e.target.closest('a')) return; drawer = r.dataset.open; editing = null; render(); });
+  if ($('drawerClose')) $('drawerClose').onclick = $('drawerBack').onclick = () => { drawer = null; editing = null; render(); };
   if (view === 'acc') wireAccounts();
   else if (view === 'add') wireAdd();
-  else wireNak();
+  else if (view === 'tools') wireTools();
+  else if (view === 'nak') wireNak();
+  box.querySelectorAll('.adm').forEach(wireRow);
+  if (editing) openEdit(editing);
 }
 
+// ---------- Today: only what needs the team ----------
+function todayHtml() {
+  const live = list.filter(n => n.status.approved), pending = list.filter(n => !n.status.approved), reported = list.filter(n => n.reports);
+  const ready = live.filter(n => n.shown === 'green').length, idle = accounts.filter(a => !a.nakamals.length && !a.team);
+  const stat = (n, label, cls = '') => `<div class="stat ${cls}"><b>${n}</b><span>${label}</span></div>`;
+  const clear = !pending.length && !reported.length;
+  return `<div class="stats">${stat(ready, 'kava ready now', 'l-green')}${stat(live.length, 'on the public map')}${stat(pending.length, 'waiting for a visit', pending.length ? 'l-amber' : '')}${stat(reported.length, 'reported lights', reported.length ? 'l-closed' : '')}</div>
+    ${clear ? `<div class="card allclear"><h3>All clear ✓</h3><p class="hint">No registrations waiting and no reported lights.</p></div>` : ''}
+    ${pending.length ? `<div class="card"><h2>Waiting for a visit (${pending.length})</h2>${pending.map(listRow).join('')}</div>` : ''}
+    ${reported.length ? `<div class="card"><h2>Reported by customers (${reported.length})</h2>${reported.map(listRow).join('')}</div>` : ''}
+    ${idle.length ? `<div class="card"><h2>Accounts with no nakamal yet (${idle.length})</h2>
+      ${idle.slice(0, 8).map(a => `<div class="lrow"><div class="lmain"><b>${esc((a.contact && a.contact.owner) || a.name || a.email || a.phone)}</b><span class="hint">${esc(a.email || '☎ ' + a.phone)} · joined ${day(a.createdAt)}</span></div><button class="btn" type="button" data-go-acc="${esc(a.email || a.phone || '')}">Open</button></div>`).join('')}
+      <p class="hint">Usually an owner who started signing up but didn't register their nakamal. Give them a call.</p></div>` : ''}
+    <div class="card"><div class="ohead"><h2>Recent activity</h2><button class="link" type="button" data-view="log">See all</button></div>${logList(log.slice(0, 8))}</div>`;
+}
+// One compact line per nakamal; tapping it opens the full controls in the side panel.
+function listRow(n) {
+  const st = n.status, v = st.visit || {}, ok = !!st.approved, l = ok ? n.shown : 'pending';
+  const what = n.reports ? `⚠️ ${n.reports.count} report${n.reports.count === 1 ? '' : 's'}: ${reportWhat(n.reports)}` : ok ? updatedLine(n) : v.visited ? 'Visited · ready to approve' : v.date ? 'Visit booked ' + v.date : 'Registered ' + day(n.createdAt);
+  return `<div class="lrow ${drawer === n.id ? 'sel' : ''}" data-open="${esc(n.id)}" role="button" tabindex="0">
+    <span class="ldot l-${l}"><span class="dot">${LIGHT[l] ? LIGHT[l].sym : ''}</span></span>
+    <div class="lmain"><b>${esc(n.name)}</b><span class="hint">${esc([n.area, (n.contact && n.contact.owner) || '', (n.contact && n.contact.phone) || ''].filter(Boolean).join(' · '))}</span></div>
+    <span class="lwhat hint">${esc(what)}</span><span class="chev" aria-hidden="true">›</span></div>`;
+}
+
+// ---------- Nakamals: a table on computers, a list on phones ----------
 function nakHtml() {
-  const pending = list.filter(n => !n.status.approved), live = list.filter(n => n.status.approved);
-  const reported = list.filter(n => n.reports);
-  const unowned = list.filter(n => !n.owner);
-  const owners = new Set(list.map(n => n.owner).filter(Boolean));
+  const pending = list.filter(n => !n.status.approved), live = list.filter(n => n.status.approved), reported = list.filter(n => n.reports);
   const q = nakSearch.toLowerCase();
   const shown = (filter === 'pending' ? pending : filter === 'live' ? live : filter === 'reported' ? reported : list)
-    .filter(n => !q || [n.name, n.area, n.ownerEmail, n.contact && n.contact.owner, n.contact && n.contact.phone].some(v => v && String(v).toLowerCase().includes(q)));
-  return `
-    <div class="card"><div class="row" style="align-items:center">
-      <div><h3>Verification</h3><p class="hint">${pending.length} waiting for a visit · ${live.length} on the public map · ${owners.size} owner${owners.size === 1 ? '' : 's'}${unowned.length ? ` · ${unowned.length} without an owner login` : ''}</p></div>
-      <a class="btn" href="/" target="_blank" rel="noopener" style="flex:0 0 auto">Open public map ↗</a></div>
-      <div class="tools" role="group" aria-label="Show">
-        <button class="chip" data-f="pending" aria-pressed="${filter === 'pending'}">Waiting (${pending.length})</button>
-        <button class="chip ${reported.length ? 'l-amber' : ''}" data-f="reported" aria-pressed="${filter === 'reported'}">Reported (${reported.length})</button>
-        <button class="chip" data-f="live" aria-pressed="${filter === 'live'}">On the map (${live.length})</button>
-        <button class="chip" data-f="all" aria-pressed="${filter === 'all'}">All (${list.length})</button>
+    .filter(n => !q || [n.name, n.area, n.ownerEmail, n.contact && n.contact.owner, n.contact && n.contact.phone].some(v => v && String(v).toLowerCase().includes(q)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const status = n => n.status.approved ? 'On the map' : (n.status.visit || {}).visited ? 'Visited' : 'Waiting';
+  return `<div class="card">
+      <div class="ohead"><h3>Nakamals</h3><a class="btn" href="/" target="_blank" rel="noopener">Open public map ↗</a></div>
+      <div class="segrow wrapme">
+        <div class="seg" role="group" aria-label="Show">
+          ${[['all', 'All', list.length], ['live', 'On the map', live.length], ['pending', 'Waiting', pending.length], ['reported', 'Reported', reported.length]].map(([k, l, c]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${l} <small>${c}</small></button>`).join('')}
+        </div>
+        <input class="field" type="search" id="nakSearch" placeholder="Search name, area, owner or phone" value="${esc(nakSearch)}" aria-label="Search nakamals">
       </div>
-      <input class="field" type="search" id="nakSearch" placeholder="Search name, area, owner or phone" value="${esc(nakSearch)}" aria-label="Search nakamals"></div>
+      ${!shown.length ? `<p class="hint">${q ? 'Nothing matches that search.' : 'None here.'}</p>` : wide() ? `<table class="ntable">
+        <thead><tr><th>Nakamal</th><th>Light</th><th>Status</th><th>Owner</th><th>Login</th><th>Updated</th></tr></thead>
+        <tbody>${shown.map(n => `<tr data-open="${esc(n.id)}" class="${drawer === n.id ? 'sel' : ''}" tabindex="0">
+          <td><b>${esc(n.name)}</b><div class="hint">${esc(n.area || '')}</div></td>
+          <td>${n.status.approved ? `<span class="pill l-${n.shown}"><span class="dot">${LIGHT[n.shown].sym}</span>${LIGHT[n.shown].short}</span>` : '—'}${n.reports ? ' ⚠️' : ''}</td>
+          <td>${status(n)}</td>
+          <td>${esc((n.contact && n.contact.owner) || '—')}<div class="hint">${esc((n.contact && n.contact.phone) || '')}</div></td>
+          <td class="hint">${n.owner ? esc(n.ownerEmail || 'phone + PIN') : 'none'}</td>
+          <td class="hint">${n.lightAt ? esc(ago(n.lightAt)) : '—'}</td></tr>`).join('')}</tbody></table>`
+      : shown.map(listRow).join('')}
+    </div>`;
+}
+function wireNak() {
+  box.querySelectorAll('[data-f]').forEach(c => c.onclick = () => { filter = c.dataset.f; render(); });
+  $('nakSearch').oninput = e => { nakSearch = e.target.value; const pos = e.target.selectionStart; render(); $('nakSearch').focus(); $('nakSearch').setSelectionRange(pos, pos); };
+  box.querySelectorAll('tr[data-open], .lrow[data-open]').forEach(r => r.onkeydown = e => { if (e.key === 'Enter') r.click(); });
+}
+// The side panel with every control for one nakamal.
+function drawerHtml() {
+  const n = list.find(x => x.id === drawer);
+  if (!n) { drawer = null; return ''; }
+  return `<div class="drawerback" id="drawerBack"></div><aside class="drawer" aria-label="${esc(n.name)}">
+    <div class="drawerhead"><b>${esc(n.name)}</b><button class="ibtn" type="button" id="drawerClose" aria-label="Close">✕</button></div>
+    ${rowHtml(n)}</aside>`;
+}
 
-    <details class="card" ${lastLogin ? '' : ''}><summary><b>Make a login for an owner without email</b></summary>
-      <form id="plForm" class="authform" style="margin-top:10px">
+// ---------- Tools & settings ----------
+function toolsHtml() {
+  const live = list.filter(n => n.status.approved);
+  return `<div class="card"><h2>Switch every light at once</h2>
+      <div class="row"><label for="bulkScope">Which nakamals<select class="field" id="bulkScope">
+        <option value="live">Only those on the public map (${live.length})</option><option value="all">All, including waiting (${list.length})</option></select></label></div>
+      <div class="lights small">${['green', 'amber', 'closed'].map(k => `<button class="light l-${k}" type="button" data-bulk="${k}"><span class="bulb">${LIGHT[k].sym}</span>${LIGHT[k].label}</button>`).join('')}</div>
+      <div class="row-btns" id="bulkConfirm" hidden><button class="btn go" type="button" id="bulkYes"></button><button class="btn" type="button" id="bulkNo">Cancel</button></div>
+      <p class="hint">For example, everything closed after a cyclone warning or on a public holiday. Owners can change their own light again afterwards.</p></div>
+
+    <div class="card"><h2>Phone + PIN login for an owner without email</h2>
+      <form id="plForm" class="authform">
         <div class="row">
           <label for="plName">Owner's name<input class="field" id="plName" maxlength="80" required></label>
           <label for="plPhone">Phone number<input class="field" id="plPhone" type="tel" maxlength="20" required placeholder="555 1234"></label></div>
         <label for="plNak">Give them this nakamal (optional)<select class="field" id="plNak"><option value="">— None yet: they'll register it themselves —</option>
           ${list.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${n.owner ? ' (has a login)' : ''}</option>`).join('')}</select></label>
         <div class="row-btns"><button class="btn go" type="submit">Create login + PIN</button><button class="btn" type="button" id="plReset">Reset PIN for this phone</button></div>
-      </form></details>
-
-    <details class="card"><summary><b>How it works</b></summary>
-      <ol class="steps" style="max-width:none;margin-top:8px">
-        <li>Owners create an account on the <a class="link" href="/owner" target="_blank">owner page</a>, or you make them a phone + PIN login above, and they register each nakamal. It shows here as waiting.</li>
-        <li>Call them, book a visit, meet them at the nakamal, then tick <b>We visited</b> and approve.</li>
-        <li><b>Reported</b>: when ${'3'} or more phones say a light is wrong, the light turns grey on the map. Call the owner, then clear the reports.</li>
-        <li><b>Lights:</b> the team can switch any nakamal's light on its row, or every light at once.</li>
-        <li><b>Owner lost access?</b> Reset their PIN, or use <b>Move to another login</b>.</li>
-      </ol>
-      <p class="hint">This page isn't linked from the public site. Only the emails on the team list can open it.</p></details>
-
-    <div class="card"><h2>Switch every light at once</h2>
-      <div class="row"><label for="bulkScope">Which nakamals<select class="field" id="bulkScope">
-        <option value="live">Only those on the public map (${live.length})</option><option value="all">All, including waiting (${list.length})</option></select></label></div>
-      <div class="lights small">${['green', 'amber', 'closed'].map(k => `<button class="light l-${k}" type="button" data-bulk="${k}"><span class="bulb">${LIGHT[k].sym}</span>${LIGHT[k].label}</button>`).join('')}</div>
-      <div class="row-btns" id="bulkConfirm" hidden><button class="btn go" type="button" id="bulkYes"></button><button class="btn" type="button" id="bulkNo">Cancel</button></div>
-      <p class="hint">For example, everything closed after a cyclone warning or on a public holiday. Each light can still be changed one by one below, and owners can change their own again.</p></div>
+      </form></div>
 
     <div class="card"><h2>Settings</h2>
       <label class="check" for="setComments"><input type="checkbox" id="setComments" ${settings.comments ? 'checked' : ''}>Show written comments with ratings</label>
       <p class="hint">Off: customers give stars only. On: they can write a short comment, shown publicly. Turn on only when someone can watch for unkind comments.</p></div>
 
-    <div class="card"><h2>${{ pending: 'Waiting for a visit', live: 'On the public map', reported: 'Reported by customers', all: 'All nakamals' }[filter]}</h2>
-      ${shown.length ? shown.map(rowHtml).join('') : `<p class="hint">${q ? 'Nothing matches that search.' : filter === 'pending' ? 'Nothing waiting. New registrations appear here.' : filter === 'reported' ? 'No reports right now.' : 'None yet.'}</p>`}</div>`;
+    <div class="card"><h2>Download</h2><p class="hint">One spreadsheet with every nakamal and every account. Opens in Excel or Google Sheets.</p>
+      <div class="row-btns"><button class="btn" id="csv" type="button">⬇ Download everything</button></div></div>
+
+    <details class="card"><summary><b>How it works</b></summary>
+      <ol class="steps" style="max-width:none;margin-top:8px">
+        <li>Owners create an account on the <a class="link" href="/owner" target="_blank">owner page</a>, or you make them a phone + PIN login above, and register each nakamal. It shows under <b>Today</b> as waiting.</li>
+        <li>Call them, book a visit, meet them at the nakamal, then tick <b>We visited</b> and approve.</li>
+        <li><b>Reported</b>: when 3 or more phones say a light is wrong, the light turns grey on the map. Call the owner, then clear the reports.</li>
+        <li><b>Owner lost access?</b> Reset their PIN, set a new password under <b>Accounts</b>, or move the nakamal to another login.</li>
+      </ol>
+      <p class="hint">This page isn't linked from the public site. Only the emails on the team list can open it.</p></details>`;
 }
-function wireNak() {
-  box.querySelectorAll('.chip[data-f]').forEach(c => c.onclick = () => { filter = c.dataset.f; render(); });
-  $('nakSearch').oninput = e => { nakSearch = e.target.value; const pos = e.target.selectionStart; render(); $('nakSearch').focus(); $('nakSearch').setSelectionRange(pos, pos); };
+function wireTools() {
   let bulk = null;
   box.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
     bulk = b.dataset.bulk;
@@ -132,8 +185,27 @@ function wireNak() {
   $('setComments').onchange = e => act({ action: 'settings', comments: e.target.checked }, e.target.checked ? 'Comments switched on' : 'Comments switched off');
   $('plForm').onsubmit = e => { e.preventDefault(); act({ action: 'createLogin', name: clean($('plName').value, 80), phone: $('plPhone').value, id: $('plNak').value }, 'Login created'); };
   $('plReset').onclick = () => act({ action: 'resetPin', phone: $('plPhone').value }, 'PIN reset');
-  box.querySelectorAll('.adm').forEach(wireRow);
-  if (editing) openEdit(editing);
+  $('csv').onclick = downloadAll;
+}
+
+// ---------- Activity log ----------
+const said = {
+  light: e => `set ${e.name} to ${LIGHT[e.detail] ? LIGHT[e.detail].label : e.detail}`, lightAll: e => `switched every light to ${LIGHT[(e.detail || '').split(' ')[0]] ? LIGHT[e.detail.split(' ')[0]].label : ''} (${(e.detail || '').split('· ')[1] || ''})`,
+  visit: e => `updated the visit for ${e.name}${e.detail ? ` (${e.detail})` : ''}`, approve: e => `approved ${e.name}: now on the public map`, hide: e => `hid ${e.name} from the map`,
+  delete: e => `deleted ${e.name}`, clearReports: e => `cleared the reports on ${e.name}`, removePhoto: e => `removed a photo from ${e.name}`, removeAvatar: e => `removed the profile picture of ${e.name}'s owner`,
+  assign: e => `moved ${e.name} to ${e.detail}`, unassign: e => `removed the owner login from ${e.name}`, edit: e => `edited ${e.name}`, addNakamal: e => `added ${e.name} (${e.detail})`,
+  createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
+  editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
+  register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+};
+function logList(entries) {
+  if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';
+  return `<ul class="loglist">${entries.map(e => `<li><span class="lwho ${e.role}">${esc(e.who)}${e.role === 'team' ? ' <small>team</small>' : ''}</span>
+    <span class="lsay">${esc((said[e.action] || (x => `${x.action} ${x.name || ''}`))(e))}</span><span class="hint" title="${esc(new Date(e.at).toLocaleString())}">${esc(ago(e.at))}</span></li>`).join('')}</ul>`;
+}
+function logHtml(entries) {
+  return `<div class="card"><h3>Activity</h3><p class="hint">Who changed what, newest first. Kept for 90 days.</p>${logList(entries)}</div>`;
 }
 
 function rowHtml(n) {
@@ -328,7 +400,7 @@ function wireAccounts() {
       act({ action: 'setPassword', userId: uid, password: e.target.pw.value }, 'New password set for ' + a.email); };
     row.addEventListener('click', e => {
       const g = e.target.closest('[data-goto]');
-      if (g) { view = 'nak'; filter = 'all'; nakSearch = (list.find(n => n.id === g.dataset.goto) || {}).name || ''; render(); return; }
+      if (g) { view = 'nak'; filter = 'all'; nakSearch = ''; drawer = g.dataset.goto; render(); return; }
       const b = e.target.closest('[data-a]'); if (!b) return;
       const k = b.dataset.a;
       if (k === 'aedit') show('edit');

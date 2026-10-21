@@ -222,3 +222,29 @@ export async function readIndex() {
   if (!idx || !idx.settings || Date.now() - idx.built > 5 * 60e3) return rebuildIndex();
   return idx;
 }
+
+// ---------- activity log: who changed what, for the team page ----------
+//   log/<time>-<random>   { at, who, role: "team" | "owner", action, id?, name?, detail? }
+export type LogEntry = { at: number; who: string; role: "team" | "owner"; action: string; id?: string; name?: string; detail?: string };
+const LOG_KEEP_MS = 90 * 864e5;
+export const whoLabel = (u: User | null) => !u ? "someone" : isPhoneLogin(u.email) ? "☎ " + phoneDigits(u.email!.split("@")[0]) : (u.email || u.id);
+export async function logEvent(u: User | null, role: LogEntry["role"], action: string, extra: { id?: string; name?: string; detail?: string } = {}) {
+  try {
+    const at = Date.now();
+    const key = `log/${String(at).padStart(14, "0")}-${Math.random().toString(36).slice(2, 7)}`;
+    await store().setJSON(key, { at, who: whoLabel(u), role, action, ...extra } satisfies LogEntry);
+    // Now and then, forget entries older than 90 days.
+    if (Math.random() < 0.02) {
+      const { blobs } = await store().list({ prefix: "log/" });
+      const old = blobs.filter((b) => Number(b.key.slice(4, 18)) < at - LOG_KEEP_MS);
+      await Promise.all(old.map((b) => store().delete(b.key)));
+    }
+  } catch { /* the log must never break the real action */ }
+}
+export async function readLog(limit = 150): Promise<LogEntry[]> {
+  const s = store();
+  const { blobs } = await s.list({ prefix: "log/" });
+  const keys = blobs.map((b) => b.key).sort().reverse().slice(0, limit);
+  const out = await Promise.all(keys.map((k) => s.get(k, { type: "json" }) as Promise<LogEntry | null>));
+  return out.filter(Boolean) as LogEntry[];
+}

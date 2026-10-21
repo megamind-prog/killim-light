@@ -1,22 +1,45 @@
-// Public page: live map + list, Bislama/English, islands, near me, share, ratings, "light is wrong" reports,
-// favourite alerts, and the last lights kept on the phone for when the signal drops.
+// Public page: map-first. On phones the list sits in a panel that slides up over the map; on computers it is a
+// side panel. Islands, near me, share, ratings, "light is wrong" reports, favourite alerts, and the last lights
+// kept on the phone for when the signal drops.
 (() => {
 const { t, BASE, $, esc, clean, LIGHT, lightOf, ago, updatedLine, priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate,
-  toast, setMsg, api, shareNakamal, makeMap, pinIcon, REGIONS } = KL;
+  toast, setMsg, api, shareNakamal, makeMap, pinIcon, osmIndex } = KL;
 const { applyStatic, langButton } = KLi18n;
 
 let nakamals = new Map(), settings = { comments: false };
 let loaded = false, built = 0, filter = 'all', query = '', sortBy = 'status', selected = null, openId = null, me = null;
-let region = store.get('kl-region', 'efate');
+let region = store.get('kl-region', 'efate');            // an island group id from the map index, or 'all'
+let groups = [];                                          // [{ id, name, bbox: [s, w, n, e] }]
 const favs = new Set(store.get('kl-favs', []));
 let myRatings = store.get('kl-ratings', {});
 const alerts = new Set(store.get('kl-alerts', []));
 const device = deviceId();
+if (filter !== 'all' && filter !== 'green' && filter !== 'fav') filter = 'all';
+
+// ---------- slide-up panel (phones) ----------
+const sheet = $('sheet'), grab = $('grab');
+const phone = () => matchMedia('(max-width: 899px)').matches;
+function setSheet(state) {
+  sheet.dataset.state = state;
+  grab.setAttribute('aria-expanded', state === 'open');
+  grab.querySelector('b').textContent = t(state === 'open' ? 'hideList' : 'showList');
+  if (state !== 'open') sheet.scrollTop = 0;
+}
+grab.onclick = () => setSheet(sheet.dataset.state === 'open' ? 'peek' : 'open');
+$('headline').addEventListener('click', () => { if (phone() && sheet.dataset.state !== 'open') setSheet('open'); });
+// Swipe the handle or the top of the panel up or down.
+let y0 = null;
+sheet.addEventListener('touchstart', e => { if (e.target.closest('.grab, .sidehead') && !e.target.closest('input, select, button:not(.grab)')) y0 = e.touches[0].clientY; }, { passive: true });
+sheet.addEventListener('touchend', e => {
+  if (y0 == null) return;
+  const dy = e.changedTouches[0].clientY - y0; y0 = null;
+  if (dy < -40) setSheet('open'); else if (dy > 40 && sheet.scrollTop <= 0) setSheet('peek');
+});
 
 // ---------- map ----------
 // Lights only show once you're zoomed in to town or village level; further out, nakamals are plain dots.
 const STATUS_ZOOM = 13;
-const map = makeMap($('map'), { region: REGIONS[region] ? region : 'efate' });
+const map = makeMap($('map'), { region: ['efate', 'santo', 'tanna'].includes(region) ? region : region === 'all' ? 'all' : 'efate' });
 const markers = new Map();
 let meMarker = null;
 const near = () => map.getZoom() >= STATUS_ZOOM;
@@ -25,17 +48,16 @@ map.on('zoomend', () => { renderMap(); paintHint(); });
 const paintHint = () => { $('zoomHint').hidden = near() || nakamals.size === 0; };
 
 function popupHtml(n) {
-  const l = lightOf(n), p = priceList(n)[0], kv = kavaLine(n);
-  return `<div class="pop l-${l}">${n.photos && n.photos[0] ? `<img class="popimg" src="${esc(n.photos[0].url)}" alt="">` : ''}<h3>${esc(n.name)}</h3><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
+  const l = lightOf(n);
+  return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
     <div class="line">${esc(updatedLine(n))}</div>
-    ${n.note ? `<div class="note"><b>${esc(n.note)}</b></div>` : ''}
-    ${kv ? `<div class="line">${esc(kv)}</div>` : ''}
-    ${p ? `<div class="line">${esc(p.item)}: <span class="price">${esc(p.price)}</span></div>` : ''}
-    ${n.rating.count ? `<div class="line"><span class="stars">${starsText(n.rating.avg)}</span> ${n.rating.avg.toFixed(1)} (${n.rating.count})</div>` : ''}
-    <button class="link" type="button" data-pop="${esc(n.id)}">${esc(t('seeBelow'))}</button></div>`;
+    ${n.note ? `<div class="note">${esc(n.note)}</div>` : ''}
+    <div class="popbtns"><a class="btn go" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('directions'))}</a>
+    <button class="btn" type="button" data-pop="${esc(n.id)}">${esc(t('details'))}</button></div></div>`;
 }
 $('map').addEventListener('click', e => {
   const b = e.target.closest('[data-pop]'); if (!b) return;
+  map.closePopup();
   openDetails(b.dataset.pop, true);
 });
 function renderMap() {
@@ -55,15 +77,49 @@ function renderMap() {
       });
       markers.set(id, m);
     } else { m.setLatLng([n.lat, n.lng]); m.setIcon(icon); }
-    if (close) { if (!m.getPopup()) m.bindPopup(''); m.setPopupContent(popupHtml(n)); }
+    if (close) { if (!m.getPopup()) m.bindPopup('', { autoPanPaddingBottomRight: [20, phone() ? 220 : 20] }); m.setPopupContent(popupHtml(n)); }
     else if (m.getPopup()) { m.closePopup(); m.unbindPopup(); }
     m.setZIndexOffset(close ? (l === 'green' ? 1000 : l === 'amber' ? 500 : 0) : 0);
   }
 }
 
+// ---------- islands ----------
+// Which island group a nakamal is on: the group whose map box holds it (nearest box if none).
+const islandCache = new Map();
+function islandOf(n) {
+  if (!groups.length) return n.region;
+  const key = n.lat + ',' + n.lng;
+  if (islandCache.has(key)) return islandCache.get(key);
+  const pad = 0.05;
+  let hit = groups.find(g => n.lat >= g.bbox[0] - pad && n.lat <= g.bbox[2] + pad && n.lng >= g.bbox[1] - pad && n.lng <= g.bbox[3] + pad);
+  if (!hit) hit = groups.reduce((a, g) => { const d = (n.lat - (g.bbox[0] + g.bbox[2]) / 2) ** 2 + (n.lng - (g.bbox[1] + g.bbox[3]) / 2) ** 2; return !a || d < a.d ? { g, d } : a; }, null)?.g;
+  const id = hit ? hit.id : 'other';
+  islandCache.set(key, id);
+  return id;
+}
+const islandName = id => id === 'all' ? t('r.all') : (groups.find(g => g.id === id) || {}).name || id;
+function paintIslands() {
+  const sel = $('island');
+  const count = id => [...nakamals.values()].filter(n => id === 'all' || islandOf(n) === id).length;
+  sel.innerHTML = `<option value="all">${esc(t('r.all'))}${loaded ? ` (${count('all')})` : ''}</option>` +
+    groups.map(g => `<option value="${esc(g.id)}">${esc(g.name)}${loaded && count(g.id) ? ` (${count(g.id)})` : ''}</option>`).join('');
+  sel.value = groups.some(g => g.id === region) ? region : 'all';
+}
+$('island').addEventListener('change', e => {
+  region = e.target.value; store.set('kl-region', region);
+  map.showIsland(groups.find(g => g.id === region) || null);
+  renderList();
+});
+osmIndex().then(ix => {
+  groups = (ix && ix.groups) || [];
+  if (region !== 'all' && !groups.some(g => g.id === region)) region = 'efate';
+  if (!deepDone && !new URLSearchParams(location.search).get('n')) map.showIsland(groups.find(g => g.id === region) || null, false);
+  paintIslands(); renderList();
+});
+
 // ---------- list ----------
 let pendingList = false;
-const inRegion = n => region === 'all' || n.region === region;
+const inRegion = n => region === 'all' || islandOf(n) === region;
 function renderList() {
   const rank = { green: 0, amber: 1, reported: 2, stale: 3, closed: 4 };
   const all = [...nakamals.values()], here = all.filter(inRegion);
@@ -77,38 +133,39 @@ function renderList() {
     return rank[lightOf(A)] - rank[lightOf(B)] || A.name.localeCompare(B.name);
   });
   const ready = here.filter(n => lightOf(n) === 'green').length;
-  $('count').textContent = !loaded ? t('loading') : t('countReady', { a: ready, b: here.length });
+  $('headline').textContent = !loaded ? t('loading') : ready === 0 ? t('readyNone') : ready === 1 ? t('readyOne') : t('readyNow', { n: ready });
+  $('headline').classList.toggle('none', loaded && ready === 0);
+  $('subline').textContent = !loaded ? '' : region === 'all' ? t('readyOfAll', { b: here.length, n: here.length }) : t('readyOf', { b: here.length, n: here.length, r: islandName(region) });
   document.querySelectorAll('[data-f]').forEach(c => c.setAttribute('aria-pressed', c.dataset.f === filter));
-  document.querySelectorAll('[data-region]').forEach(c => c.setAttribute('aria-pressed', c.dataset.region === region));
   if (!loaded) return;
   const box = $('list');
   // Keep a half-typed review when the lights refresh.
   if (box.contains(document.activeElement) && document.activeElement.matches('textarea, input')) { pendingList = true; return; }
   box.innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">${all.length === 0 ? t('noneYet', { owner: BASE + 'owner' })
-      : here.length === 0 ? t('noRegion', { r: t('r.' + region) }) : filter === 'fav' ? t('noFavs') : t('noMatch')}</div>`;
+      : here.length === 0 ? t('noRegion', { r: islandName(region) }) : filter === 'fav' ? t('noFavs') : t('noMatch')}</div>`;
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingList && !$('list').contains(document.activeElement)) { pendingList = false; renderList(); } }, 50));
 
 function itemHtml(n) {
   const l = lightOf(n), st = n.rating, ps = priceList(n), open = n.id === openId, kv = kavaLine(n);
-  return `<article class="item l-${l} ${n.id === selected ? 'sel' : ''}" data-id="${esc(n.id)}" id="nk-${esc(n.id)}">
-    ${n.photos && n.photos[0] ? `<img class="cover" src="${esc(n.photos[0].url)}" alt="${esc(n.name)}" loading="lazy">` : ''}
-    <div class="top">
-      <div class="grow"><h3 class="name">${esc(n.name)}</h3>${n.area ? `<div class="area">${esc(n.area)}${me ? ` · ${esc(t('distance', { d: fmtKm(km(me, n)) }))}` : ''}</div>` : me ? `<div class="area">${esc(t('distance', { d: fmtKm(km(me, n)) }))}</div>` : ''}</div>
-      <button class="fav" data-fav aria-pressed="${favs.has(n.id)}" aria-label="${esc(t('favourite'))}: ${esc(n.name)}">${favs.has(n.id) ? '★' : '☆'}</button>
-    </div>
-    <div class="now"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span><span class="line">${esc(updatedLine(n))}</span></div>
-    ${n.note ? `<div class="note"><b>${esc(n.note)}</b></div>` : ''}
-    <div class="row-btns" style="align-items:center">
-      ${kv ? `<span class="line">${esc(kv)}</span>` : ''}
-      ${ps[0] ? `<span class="line">${esc(ps[0].item)} <span class="price">${esc(ps[0].price)}</span></span>` : ''}
-      <span class="rating">${st.count ? `<span class="stars">${starsText(st.avg)}</span><b>${st.avg.toFixed(1)}</b>(${st.count})` : esc(t('noRatings'))}</span>
-    </div>
-    <div class="row-btns">
-      <button class="btn" type="button" data-act="toggle" aria-expanded="${open}">${esc(open ? t('hideDetails') : t('details'))}</button>
-      <button class="btn" type="button" data-act="map">${esc(t('showOnMap'))}</button>
-      <a class="btn" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('directions'))}</a>
-      <button class="btn" type="button" data-act="share">${esc(t('share'))}</button>
+  const facts = [kv, ps[0] ? `${ps[0].item} ${ps[0].price}` : '', st.count ? `★ ${st.avg.toFixed(1)} (${st.count})` : ''].filter(Boolean);
+  const where = [n.area, me ? t('distance', { d: fmtKm(km(me, n)) }) : ''].filter(Boolean).join(' · ');
+  return `<article class="item l-${l} ${n.id === selected ? 'sel' : ''} ${open ? 'open' : ''}" data-id="${esc(n.id)}" id="nk-${esc(n.id)}">
+    <button class="itemmain" type="button" data-act="toggle" aria-expanded="${open}">
+      <span class="itext">
+        <span class="ititle"><span class="name">${esc(n.name)}</span></span>
+        ${where ? `<span class="imeta">${esc(where)}</span>` : ''}
+        <span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>
+        ${n.note ? `<span class="inote">${esc(n.note)}</span>` : ''}
+        ${facts.length ? `<span class="ifacts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
+      </span>
+      ${n.photos && n.photos[0] ? `<img class="thumbimg" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
+    </button>
+    <div class="iactions">
+      <a class="btn go" href="${directions(n)}" target="_blank" rel="noopener">${esc(t('directions'))}</a>
+      <button class="ibtn" type="button" data-act="map" aria-label="${esc(t('showOnMap'))}" title="${esc(t('showOnMap'))}">◎</button>
+      <button class="ibtn" type="button" data-act="share" aria-label="${esc(t('share'))}" title="${esc(t('share'))}">↗</button>
+      <button class="ibtn fav" type="button" data-fav aria-pressed="${favs.has(n.id)}" aria-label="${esc(t('favourite'))}" title="${esc(t('favourite'))}">${favs.has(n.id) ? '★' : '☆'}</button>
     </div>
     ${open ? detailsHtml(n, st, ps) : ''}
   </article>`;
@@ -117,19 +174,16 @@ function itemHtml(n) {
 function detailsHtml(n, st, ps) {
   const mine = myRatings[n.id];
   return `<div class="details">
-    ${n.photos && n.photos.length > 1 ? `<div class="gallery" aria-label="Photos">${n.photos.map((p, i) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${i + 1}" loading="lazy"></a>`).join('')}</div>` : ''}
+    ${n.photos && n.photos.length ? `<div class="gallery" aria-label="Photos">${n.photos.map((p, i) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${i + 1}" loading="lazy"></a>`).join('')}</div>` : ''}
     ${n.host ? `<div class="profile"><div class="avatar">${n.host.avatar ? `<img src="${esc(n.host.avatar)}" alt="">` : '<span aria-hidden="true">👤</span>'}</div><div><h4>${esc(t('host'))}</h4><div class="note">${esc(n.host.name || t('theOwner'))}</div></div></div>` : ''}
-    ${n.about ? `<div><h4>${esc(t('about'))}</h4><p class="note" style="margin:4px 0 0">${esc(n.about)}</p></div>` : ''}
-    ${kavaLine(n) ? `<div><h4>${esc(t('kava'))}</h4><div class="note">${esc(kavaLine(n))}</div></div>` : ''}
+    ${n.about ? `<p class="note">${esc(n.about)}</p>` : ''}
+    <dl class="facts">
+      ${kavaLine(n) ? `<div><dt>${esc(t('kava'))}</dt><dd>${esc(kavaLine(n))}</dd></div>` : ''}
+      ${n.hours ? `<div><dt>${esc(t('hours'))}</dt><dd>${esc(n.hours)}</dd></div>` : ''}
+    </dl>
     ${ps.length ? `<div><h4>${esc(t('prices'))}</h4><ul class="plist">${ps.map(p => `<li><span>${esc(p.item)}</span><span class="price">${esc(p.price)}</span></li>`).join('')}</ul></div>` : ''}
-    ${n.hours ? `<div><h4>${esc(t('hours'))}</h4><div class="note">${esc(n.hours)}</div></div>` : ''}
     <div class="row-btns">
       <button class="btn" type="button" data-act="alert" aria-pressed="${alerts.has(n.id)}">${esc(alerts.has(n.id) ? t('alertOn') : t('alertMe'))}</button>
-      <button class="btn" type="button" data-act="report">${esc(t('wrongLight'))}</button>
-    </div>
-    <div class="reportbox" hidden>
-      <h4>${esc(t('reportTitle'))}</h4>
-      <div class="row-btns">${['closed', 'nokava', 'open', 'location'].map(k => `<button class="btn" type="button" data-report="${k}">${esc(t('rep.' + k))}</button>`).join('')}</div>
     </div>
     <div><h4>${esc(t('ratings'))}${st.count ? ` · ${esc(t('ratingsFrom', { avg: st.avg.toFixed(1), n: st.count }))}` : ''}</h4>
       ${settings.comments && st.recent.length ? st.recent.map(r => `<div class="review"><div><span class="stars">${starsText(r.stars)}</span></div>
@@ -144,6 +198,11 @@ function detailsHtml(n, st, ps) {
       <p class="msg" id="rmsg-${esc(n.id)}"></p>
       <p class="hint">${esc(t('rateNote'))}</p>
     </form>
+    <button class="link small" type="button" data-act="report">${esc(t('isWrong'))}</button>
+    <div class="reportbox" hidden>
+      <h4>${esc(t('reportTitle'))}</h4>
+      <div class="row-btns">${['closed', 'nokava', 'open', 'location'].map(k => `<button class="btn" type="button" data-report="${k}">${esc(t('rep.' + k))}</button>`).join('')}</div>
+    </div>
   </div>`;
 }
 
@@ -157,9 +216,17 @@ function countView(id) {
 function openDetails(id, scroll) {
   openId = id; selected = id;
   const n = nakamals.get(id);
-  if (n && !inRegion(n)) { region = 'all'; store.set('kl-region', region); }
+  if (n && !inRegion(n)) { region = 'all'; store.set('kl-region', region); paintIslands(); }
+  if (phone()) setSheet('open');
   renderList(); renderMap(); countView(id);
-  if (scroll) document.getElementById('nk-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (scroll) requestAnimationFrame(() => document.getElementById('nk-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+function showOnMap(id) {
+  const n = nakamals.get(id); if (!n) return;
+  selected = id; renderList(); renderMap(); countView(id);
+  if (phone()) setSheet('peek');
+  map.flyTo([n.lat, n.lng], Math.max(map.getZoom(), 16), { duration: .5 });
+  map.once('moveend', () => markers.get(id)?.openPopup());
 }
 
 const picked = {};
@@ -178,12 +245,7 @@ $('list').addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act;
   if (act === 'toggle') { openId === id ? (openId = null, renderList()) : openDetails(id, false); }
-  if (act === 'map') {
-    selected = id; renderList(); renderMap(); countView(id);
-    $('map').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    map.flyTo([n.lat, n.lng], Math.max(map.getZoom(), 16), { duration: .5 });
-    map.once('moveend', () => markers.get(id)?.openPopup());
-  }
+  if (act === 'map') showOnMap(id);
   if (act === 'share') shareNakamal(n);
   if (act === 'unrate') rate(id, null, '');
   if (act === 'report') { const b = item.querySelector('.reportbox'); b.hidden = !b.hidden; }
@@ -246,14 +308,14 @@ async function findMe(sort) {
     else meMarker = L.circleMarker([me.lat, me.lng], { radius: 8, color: '#fff', weight: 3, fillColor: '#3552c4', fillOpacity: 1 }).addTo(map);
     map.flyTo([me.lat, me.lng], 15, { duration: .8 });
     if (sort) { sortBy = 'near'; $('sort').value = 'near'; }
-    region = 'all'; renderList();
+    region = 'all'; paintIslands(); renderList();
   } catch { toast(t('locDenied')); if (sortBy === 'near') { sortBy = 'status'; $('sort').value = 'status'; } }
 }
 $('locBtn').onclick = () => findMe(true);
 
 document.querySelectorAll('[data-f]').forEach(c => c.addEventListener('click', () => { filter = c.dataset.f; renderList(); }));
-document.querySelectorAll('[data-region]').forEach(c => c.addEventListener('click', () => { region = c.dataset.region; store.set('kl-region', region); map.showRegion(region); renderList(); }));
 $('search').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); renderList(); });
+$('search').addEventListener('focus', () => { if (phone()) setSheet('open'); });
 $('sort').addEventListener('change', e => { sortBy = e.target.value; if (sortBy === 'near' && !me) findMe(false); else renderList(); });
 
 // ---------- install as an app ----------
@@ -262,7 +324,7 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instal
 $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $('installBtn').hidden = true; };
 
 // ---------- language ----------
-langButton(() => { renderList(); renderMap(); paintBanner(); });
+langButton(() => { renderList(); renderMap(); paintBanner(); paintIslands(); setSheet(sheet.dataset.state); });
 applyStatic();
 
 // ---------- live data: refresh every 30 seconds; keep the last copy on the phone ----------
@@ -278,6 +340,7 @@ function take(d) {
 }
 const last = store.get('kl-last', null);
 if (last && last.items) take(last);
+let deepDone = false;
 async function load() {
   try {
     const d = await api('/api/nakamals');
@@ -287,7 +350,7 @@ async function load() {
     offline = true;
     if (!loaded) $('list').innerHTML = `<div class="empty">${esc(t('offlineNone'))}</div>`;
   }
-  paintBanner(); renderMap(); renderList(); paintHint();
+  paintBanner(); paintIslands(); renderMap(); renderList(); paintHint();
   // Opened from a shared link (/?n=<id>) or an alert: open that nakamal once.
   const want = new URLSearchParams(location.search).get('n') || (location.hash.startsWith('#n-') ? location.hash.slice(3) : '');
   if (want && !deepDone && nakamals.has(want)) {
@@ -297,11 +360,13 @@ async function load() {
     map.setView([n.lat, n.lng], 16);
   }
 }
-let deepDone = false;
 // The "Near me" shortcut on the home-screen icon.
 if (new URLSearchParams(location.search).get('near') === '1') findMe(true);
+setSheet('peek');
 renderMap(); renderList();
 load();
 setInterval(() => { if (!document.hidden) load(); else renderList(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+// Leaflet needs to know when its box changes size (rotating a phone, resizing a window).
+addEventListener('resize', () => map.invalidateSize());
 })();

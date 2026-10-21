@@ -247,6 +247,14 @@ function makeMap(el, opts = {}) {
   m.on('zoomend', sync);
   m.fitBounds(start);
   m.showRegion = r => m.flyToBounds((REGIONS[r] || REGIONS.efate).bounds, { duration: .8 });
+  // Fly to one island group from the OpenStreetMap index (bbox = [south, west, north, east]), or the whole country.
+  m.showIsland = (g, animate = true) => {
+    const b = g ? [[g.bbox[0], g.bbox[1]], [g.bbox[2], g.bbox[3]]] : VANUATU_BOUNDS;
+    // On phones the list panel covers the bottom of the map: keep the island above it.
+    const under = matchMedia('(max-width: 899px)').matches && document.querySelector('.side') ? 200 : 16;
+    const pad = { paddingTopLeft: [16, 60], paddingBottomRight: [16, under] };
+    animate ? m.flyToBounds(b, { duration: .8, ...pad }) : m.fitBounds(b, pad);
+  };
   if ('ResizeObserver' in window) {
     const ro = new ResizeObserver(() => { if (m._loaded && document.body.contains(el)) m.invalidateSize(); });
     ro.observe(el); m.on('unload', () => ro.disconnect());
@@ -282,5 +290,5 @@ if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https
 
 window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
   priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl,
-  makeMap, makePicker, pinIcon, REGIONS };
+  makeMap, makePicker, pinIcon, REGIONS, osmIndex: OSM_INDEX };
 })();

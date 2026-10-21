@@ -4,7 +4,7 @@
 import type { Config, Context } from "@netlify/functions";
 import {
   avatarUrl, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getStatus, imgStore, isAdmin, isPhoneLogin, json, newId,
-  photoUrl, readAll, rebuildIndex, reportCounts, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
+  photoUrl, readAll, rebuildIndex, reportCounts, logEvent, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 import { notifyKavaReady } from "../lib/push.mts";
@@ -81,6 +81,7 @@ export default async (req: Request, context: Context) => {
     };
     await s.setJSON("nak/" + id, nak);
     await s.setJSON("status/" + id, { approved: false } satisfies Status);
+    await logEvent(user, "owner", "register", { id, name: nak.name });
     return json({ ok: true, id, nakamals: await mine(user.id) });
   }
 
@@ -112,6 +113,7 @@ export default async (req: Request, context: Context) => {
     await deleteImages(`photo/${id}/`);
     await Promise.all([s.delete("nak/" + id), s.delete("status/" + id),
       deletePrefix(`rating/${id}/`), deletePrefix(`report/${id}/`), deletePrefix(`views/${id}/`), deletePrefix(`push/${id}/`)]);
+    await logEvent(user, "owner", "remove", { id, name: nak.name });
     await rebuildIndex();
     return json({ ok: true, nakamals: await mine(user.id) });
   } else {
@@ -119,6 +121,7 @@ export default async (req: Request, context: Context) => {
   }
   const next = { ...nak, ...patch, updatedAt: Date.now() };
   await s.setJSON("nak/" + id, next);
+  await logEvent(user, "owner", action, { id, name: next.name, detail: action === "light" ? body.light : action === "note" ? patch.note : undefined });
   const approved = (await getStatus(id)).approved;
   if (approved) await rebuildIndex();
   // Alert phones that follow this nakamal, without making the owner wait.

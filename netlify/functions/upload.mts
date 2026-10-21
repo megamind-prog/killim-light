@@ -4,7 +4,7 @@
 import type { Config } from "@netlify/functions";
 import {
   MAX_PHOTOS, avatarUrl, bad, currentUser, deleteImages, getNak, getStatus, imgStore, json, photoUrl,
-  rebuildIndex, store, type Photo, type Profile,
+  rebuildIndex, logEvent, store, type Photo, type Profile,
 } from "../lib/data.mts";
 
 const MAX_BYTES = 3 * 1024 * 1024;
@@ -41,6 +41,7 @@ export default async (req: Request) => {
     await imgs.set(`photo/${id}/${photo.id}`, buf.buffer as ArrayBuffer, { metadata: { type: "image/jpeg" } });
     await s.setJSON("nak/" + id, { ...nak, photos: [...photos, photo], updatedAt: Date.now() });
     if ((await getStatus(id)).approved) await rebuildIndex();
+    await logEvent(user, "owner", "addPhoto", { id, name: nak.name });
     return json({ ok: true, photo: { id: photo.id, url: photoUrl(id, photo) } });
   }
 

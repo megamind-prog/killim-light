@@ -8,7 +8,7 @@ import { notifyKavaReady } from "../lib/push.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
   avatarUrl, newId, sanitizeDetails, sanitizeKava, sanitizePrices, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getSettings, getStatus, imgStore, isAdmin, isPhoneLogin, json,
-  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, reportCounts, shownLight, store, vuDate,
+  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, reportCounts, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 
@@ -104,7 +104,7 @@ export default async (req: Request, context?: Context) => {
   if (!user) return bad("Please log in.", 401);
   if (!isAdmin(user)) return bad("This page is only for the Killim Light team.", 403);
   const s = store();
-  const everything = async () => { const [settings, nakamals, accts] = await Promise.all([getSettings(), overview(), accounts()]); return { settings, nakamals, accounts: accts }; };
+  const everything = async () => { const [settings, nakamals, accts, log] = await Promise.all([getSettings(), overview(), accounts(), readLog()]); return { settings, nakamals, accounts: accts, log }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
   if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
 
@@ -114,6 +114,7 @@ export default async (req: Request, context?: Context) => {
 
   if (action === "settings") {
     await s.setJSON("settings/site", { ...(await getSettings()), comments: !!body?.comments });
+    await logEvent(user, "team", "settings", { detail: body?.comments ? "comments on" : "comments off" });
     await rebuildIndex();
     return reply();
   }
@@ -127,6 +128,7 @@ export default async (req: Request, context?: Context) => {
     if (action === "resetPin") {
       if (!existing) return bad("No phone login uses that number yet.", 404);
       await identityAdmin.updateUser(existing.id, { password: pin });
+      await logEvent(user, "team", "resetPin", { detail: phone });
       return reply({ login: { phone, pin, reset: true } });
     }
     if (existing) return bad("That phone number already has a login. Use Reset PIN instead.");
@@ -140,6 +142,7 @@ export default async (req: Request, context?: Context) => {
       const n = await getNak(give);
       if (n) await s.setJSON("nak/" + give, { ...n, owner: created.id, ownerEmail: undefined, updatedAt: Date.now() });
     }
+    await logEvent(user, "team", "createLogin", { detail: phone + " (" + name + ")" });
     return reply({ login: { phone, pin } });
   }
 
@@ -163,6 +166,7 @@ export default async (req: Request, context?: Context) => {
       if (c) await s.setJSON("contact/" + target.id, { owner: c.owner, phone: c.phone, email: targetEmail, at: Date.now() });
     }
     await rebuildIndex();
+    await logEvent(user, "team", "assign", { id: one || undefined, name: moving.length === 1 ? moving[0].name : moving.length + " nakamals", detail: raw });
     return reply({ moved: moving.length, to: isPhoneLogin(target.email) ? phoneDigits(target.email!.split("@")[0]) : target.email });
   }
 
@@ -189,6 +193,7 @@ export default async (req: Request, context?: Context) => {
     } satisfies Status);
     if (owner && (cOwner || cPhone) && !(await s.get("contact/" + owner.id))) await s.setJSON("contact/" + owner.id, { owner: cOwner, phone: cPhone, at: now });
     await rebuildIndex();
+    await logEvent(user, "team", "addNakamal", { id, name: nak.name, detail: approve ? "on the map" : "waiting" });
     return reply({ added: id });
   }
 
@@ -208,6 +213,7 @@ export default async (req: Request, context?: Context) => {
     }
     await rebuildIndex();
     if (alerts.length) { const job = Promise.all(alerts.map(notifyKavaReady)); context?.waitUntil ? context.waitUntil(job) : await job; }
+    await logEvent(user, "team", "lightAll", { detail: body.light + " · " + changed + " nakamals" });
     return reply({ changed });
   }
 
@@ -225,6 +231,7 @@ export default async (req: Request, context?: Context) => {
         const pr = ((await s.get("profile/" + uid, { type: "json" })) as Profile | null) || { name: "", avatar: null, updatedAt: 0 };
         await s.setJSON("profile/" + uid, { ...pr, name: clean(body.profileName, 60), updatedAt: Date.now() });
       }
+      await logEvent(user, "team", "editAccount", { detail: target.email && !isPhoneLogin(target.email) ? target.email : owner });
       await rebuildIndex();
       return reply();
     }
@@ -232,11 +239,13 @@ export default async (req: Request, context?: Context) => {
       if (isPhoneLogin(target.email)) {
         const pin = newPin();
         await identityAdmin.updateUser(uid, { password: pin });
+        await logEvent(user, "team", "resetPin", { detail: phoneDigits(target.email!.split("@")[0]) });
         return reply({ login: { phone: phoneDigits(target.email!.split("@")[0]), pin, reset: true } });
       }
       const pw = String(body?.password || "");
       if (pw.length < 8) return bad("The new password needs at least 8 characters.");
       await identityAdmin.updateUser(uid, { password: pw });
+      await logEvent(user, "team", "setPassword", { detail: target.email });
       return reply({ passwordSet: target.email });
     }
     // deleteAccount
@@ -248,6 +257,7 @@ export default async (req: Request, context?: Context) => {
     await Promise.all([s.delete("contact/" + uid), s.delete("profile/" + uid)]);
     await identityAdmin.deleteUser(uid);
     await rebuildIndex();
+    await logEvent(user, "team", "deleteAccount", { detail: (isPhoneLogin(target.email) ? phoneDigits(target.email!.split("@")[0]) : target.email) + (theirs.length ? (body?.deleteNakamals ? " · nakamals deleted" : " · nakamals kept") : "") });
     return reply({ deletedAccount: true, nakamals: theirs.length });
   }
 
@@ -306,6 +316,8 @@ export default async (req: Request, context?: Context) => {
   } else {
     return bad("Unknown action.");
   }
+  const detail = action === "light" ? body.light : action === "visit" ? (body?.visited ? "visited" : body?.date ? "visit " + clean(body.date, 10) : "notes") : action === "assign" ? clean(body?.email, 120) : undefined;
+  await logEvent(user, "team", action, { id, name: nak.name, detail });
   await rebuildIndex();
   return reply();
 };
