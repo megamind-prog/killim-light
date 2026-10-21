@@ -304,7 +304,8 @@ function urlB64(s) { const p = '='.repeat((4 - s.length % 4) % 4), b = atob((s +
 
 // ---------- directions inside the app, on our own road map ----------
 const WALK = 4.5, DRIVE = 30;                 // km/h, rough Vanuatu averages
-let routeLayer = null, routeFor = null, watchId = null, lastRoute = null, lastReroute = 0;
+let routeLayer = null, routeFor = null, watchId = null, lastRoute = null, lastReroute = 0, lastHere = null;
+let routeMode = store.get('kl-route-mode', 'drive');
 const card = $('routeCard');
 const mins = (m, kmh) => Math.max(1, Math.round(m / 1000 / kmh * 60));
 function routeCardHtml(n, body, btns = '') {
@@ -341,7 +342,8 @@ async function drawRoute(n, here, fit) {
     card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeIsland'))}</p>`);
     map.flyTo([n.lat, n.lng], 14); return;
   }
-  const r = await KLRoute.route(g, [here.lat, here.lng], [n.lat, n.lng]);
+  lastHere = here;
+  const r = await KLRoute.route(g, [here.lat, here.lng], [n.lat, n.lng], routeMode);
   if (routeFor !== n.id) return;
   if (!r) { card.innerHTML = routeCardHtml(n, `<p class="rcline">${esc(t('routeNone'))}</p>`); return; }
   lastRoute = r;
@@ -361,8 +363,9 @@ function paintRouteCard(n, left) {
   const off = r.offEnd > 150 ? `<p class="hint">${esc(t('routeOff', { d: fmtKm(r.offEnd / 1000) }))}</p>` : '';
   const following = watchId != null;
   card.innerHTML = routeCardHtml(n,
-    `<p class="rcbig">${esc(following ? t('routeLeft', { d: fmtKm(left / 1000) }) : fmtKm(r.total / 1000))}</p>
-     <p class="rcline">${esc(t('routeSum', { d: fmtKm(left / 1000), w: mins(left, WALK), c: mins(left, DRIVE) }))}</p>${off}
+    `<div class="seg rcmode" role="group" aria-label="Walk or drive">${['walk', 'drive'].map(m => `<button type="button" data-mode="${m}" aria-pressed="${routeMode === m}">${esc(t('mode.' + m))}</button>`).join('')}</div>
+     <p class="rcbig">${esc(following ? t('routeLeft', { d: fmtKm(left / 1000) }) : fmtKm(r.total / 1000))} <small>· ${esc(routeMode === 'walk' ? t('minWalk', { m: mins(left, WALK) }) : t('minDrive', { m: mins(left, DRIVE) }))}</small></p>
+     <p class="hint">${esc(t(routeMode === 'walk' ? 'modeWalkHint' : 'modeDriveHint'))}</p>${off}
      <p class="hint">${esc(t('routeNote'))}</p>`,
     following ? `<span class="pill l-green"><span class="dot"></span>${esc(t('routeFollowing'))}</span>` : `<button class="btn go" type="button" data-rc="follow">${esc(t('routeFollow'))}</button>`);
 }
@@ -387,6 +390,12 @@ function follow() {
   paintRouteCard(n, lastRoute.total);
 }
 card.addEventListener('click', e => {
+  const md = e.target.closest('[data-mode]');
+  if (md && md.dataset.mode !== routeMode) {
+    routeMode = md.dataset.mode; store.set('kl-route-mode', routeMode);
+    const n = nakamals.get(routeFor); if (n && lastHere) drawRoute(n, me || lastHere, watchId == null);
+    return;
+  }
   const b = e.target.closest('[data-rc]'); if (!b) return;
   const a = b.dataset.rc;
   if (a === 'end') clearRoute();

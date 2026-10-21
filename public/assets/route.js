@@ -24,7 +24,7 @@ function load(group) {
       const cum = [0];
       for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + metres(pts[i - 1], pts[i]));
       const k = len / (cum[cum.length - 1] || 1);            // scale the simplified line to the true length
-      return { a, b, len, cost: len * (COST[cls] || 1), pts, cum: cum.map(c => c * k) };
+      return { a, b, len, cls, pts, cum: cum.map(c => c * k) };
     });
     const adj = Array.from({ length: nn }, () => []);
     edges.forEach((e, i) => { adj[e.a].push(i); adj[e.b].push(i); });
@@ -75,11 +75,13 @@ function slice(e, from, to) {
 }
 
 // Shortest way by road from one place to another (A* over the island's road graph).
-async function route(group, from, to) {
+// mode 'drive': stay on main roads where it costs little extra. mode 'walk': strictly the shortest distance.
+async function route(group, from, to, mode = 'drive') {
   const G = await load(group);
   if (!G) return null;
   // Nearest road first; if that piece of road doesn't connect, use the main road network.
-  return search(G, snap(G, from), snap(G, to), from, to) || search(G, snap(G, from, true), snap(G, to, true), from, to);
+  G.edges.forEach(e => { e.cost = mode === 'walk' ? e.len : e.len * (COST[e.cls] || 1); });
+  return search(G, snap(G, from), snap(G, to)) || search(G, snap(G, from, true), snap(G, to, true));
 }
 function search(G, s, t) {
   if (!s || !t) return null;

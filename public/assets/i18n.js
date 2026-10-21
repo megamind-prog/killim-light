@@ -196,6 +196,12 @@ const T = {
   loadFail:       { bi: 'Mi no save lodem ol nakamal blong yu', en: "Couldn't load your nakamals" },
 
   needContact:    { bi: 'Raetem nem mo namba blong fon blong yu.', en: 'Enter your name and a phone number our team can call.' },
+  'mode.walk':    { bi: '🚶 Wokbaot', en: '🚶 Walk' },
+  'mode.drive':   { bi: '🚗 Trak', en: '🚗 Drive' },
+  minWalk:        { bi: '{m} min wokbaot', en: '{m} min walk' },
+  minDrive:       { bi: '{m} min long trak', en: '{m} min by car' },
+  modeWalkHint:   { bi: 'Rod we i sot moa.', en: 'The shortest way.' },
+  modeDriveHint:  { bi: 'I stap long ol bigfala rod sapos i no longwe moa.', en: 'Keeps to main roads when it adds little distance.' },
   routeTo:        { bi: 'Rod i go long {name}', en: 'Way to {name}' },
   routeFinding:   { bi: 'Mi stap faenem wea yu stap…', en: 'Finding where you are…' },
   routeLoc:       { bi: 'Openem location long fon blong yu blong luk rod.', en: 'Turn on your phone\'s location to see the way.' },
