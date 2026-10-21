@@ -96,6 +96,11 @@ async function start({ box, allowSignup, title, intro, onUser }) {
         help.hidden = false;
         if ($('hLogin')) $('hLogin').onclick = () => showForm('login', null, raw);
         if ($('hReset')) $('hReset').onclick = () => showForgot(raw);
+        // Signing up again with the same details makes the login service send a fresh confirmation email.
+        if ($('hResend')) $('hResend').onclick = async () => {
+          try { await A.signup(login.email, pass, {}); setMsg('aMsg', t('confirmResent', { email: raw }), true); }
+          catch (e2) { setMsg('aMsg', errText(e2) || t('loginFail'), false); }
+        };
       };
       const login = toLogin(raw);
       try {
@@ -123,6 +128,7 @@ async function start({ box, allowSignup, title, intro, onUser }) {
           offer([['hLogin', t('loginThis'), true], ['hReset', t('resetMine')]]);
         } else if (/confirm/i.test(m)) {
           setMsg('aMsg', t('confirmFirst'), false);
+          if (!login.phone) offer([['hResend', t('resendConfirm'), true]]);
         } else if (/invalid|password|credentials|grant/i.test(m)) {
           setMsg('aMsg', login.phone ? t('wrongLogin') + ' ' + t('forgotPin') : t('wrongLogin'), false);
           if (!login.phone && raw) offer([['hReset', t('resetThis')]]);
