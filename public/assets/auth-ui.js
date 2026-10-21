@@ -22,6 +22,12 @@ async function start({ box, allowSignup, title, intro, onUser }) {
   let view = () => (allowSignup ? showChoice() : showForm('login'));
   const ctl = { redraw: () => view() };
 
+  // The login service puts its real reason in the response body (the browser gives no status text over HTTP/2).
+  function errText(err) {
+    const c = (err && err.cause) || {}, j = c.json || err.json || {};
+    return String((err && err.message) || j.error_description || j.msg || j.error || c.data || '');
+  }
+
   // Finish links coming back from email confirmation, password reset or Google.
   try {
     const cb = await A.handleAuthCallback();
@@ -74,7 +80,7 @@ async function start({ box, allowSignup, title, intro, onUser }) {
     </div>`;
     box.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => showForm(b.dataset.mode, null, $('aEmail').value));
     if ($('backChoice')) $('backChoice').onclick = showChoice;
-    if ($('gBtn')) $('gBtn').onclick = () => A.oauthLogin('google');
+    if ($('gBtn')) $('gBtn').onclick = () => { try { localStorage.setItem('kl-return', location.pathname); } catch {} A.oauthLogin('google'); };
     if ($('forgot')) $('forgot').onclick = () => {
       const v = $('aEmail').value;
       if (v && !v.includes('@') && /\d{5}/.test(v.replace(/\D/g, ''))) return setMsg('aMsg', t('forgotPin'), false);
@@ -107,7 +113,7 @@ async function start({ box, allowSignup, title, intro, onUser }) {
         }
       } catch (err) {
         btn.disabled = false;
-        const m = String(err && err.message || '');
+        const m = errText(err);
         const code = err && (err.status || (err.cause && err.cause.status));
         if (code === 404) {
           // The site has no login service yet: Netlify Identity isn't switched on for this project.
