@@ -108,7 +108,11 @@ async function start({ box, allowSignup, title, intro, onUser }) {
       } catch (err) {
         btn.disabled = false;
         const m = String(err && err.message || '');
-        if (/already|registered|exists/i.test(m)) {
+        const code = err && (err.status || (err.cause && err.cause.status));
+        if (code === 404) {
+          // The site has no login service yet: Netlify Identity isn't switched on for this project.
+          setMsg('aMsg', t('identityOff'), false);
+        } else if (/already|registered|exists/i.test(m)) {
           setMsg('aMsg', t('emailTaken', { email: raw }) + (google ? t('emailTakenG') : ''), false);
           offer([['hLogin', t('loginThis'), true], ['hReset', t('resetMine')]]);
         } else if (/confirm/i.test(m)) {

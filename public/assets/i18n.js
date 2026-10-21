@@ -163,6 +163,7 @@ const T = {
   resetThis:      { bi: 'Jenisim pasword blong imel ia', en: 'Reset password for this email' },
   confirmFirst:   { bi: 'Konfemem imel fastaem: openem link we mifala i sendem. Lukluk long spam sapos yu no faenem.', en: "Confirm your email first: open the link we sent you. Check your spam folder if you can't find it." },
   wrongLogin:     { bi: 'Imel/fon o pasword i rong.', en: 'Wrong email/phone or password.' },
+  identityOff:    { bi: 'Login i no stap wok yet long websaet ia. Tim i mas openem Identity long Netlify.', en: 'Logins aren\'t switched on for this website yet. The team needs to enable Identity in Netlify.' },
   loginFail:      { bi: 'Mi no save login. Jekem netwok mo traem bakegen.', en: 'Could not log in. Check your connection and try again.' },
   resetTitle:     { bi: 'Jenisim pasword', en: 'Reset your password' },
   resetHint:      { bi: 'Raetem imel blong yu, bae mifala i sendem wan link blong jusum niu pasword.', en: "Enter your email and we'll send you a link to choose a new password." },
