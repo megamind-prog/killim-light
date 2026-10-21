@@ -32,9 +32,10 @@ export default async (req: Request, context: Context) => {
   if (region) items = items.filter((n) => n.region === region);
   if (light) items = items.filter((n) => n.status === light);
   const headers = { ...CORS, "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=30" };
-  const one = url.pathname.match(/^\/api\/v1\/nakamals\/([A-Za-z0-9]+)$/);
+  const one = url.pathname.match(/^\/api\/v1\/nakamals\/([^/]+)$/);
   if (one) {
-    const n = items.find((x) => x.id === one[1]);
+    let want = one[1]; try { want = decodeURIComponent(want); } catch {}
+    const n = items.find((x) => x.id === want);
     return new Response(JSON.stringify(n ? { license: LICENSE, nakamal: n } : { error: "Not found" }), { status: n ? 200 : 404, headers });
   }
   if (url.pathname.endsWith(".geojson")) {
