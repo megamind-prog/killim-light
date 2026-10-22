@@ -198,6 +198,7 @@ function detailsHtml(n, st, ps) {
     <dl class="facts">
       ${kavaLine(n) ? `<div><dt>${esc(t('kava'))}</dt><dd>${esc(kavaLine(n))}</dd></div>` : ''}
       ${n.hours ? `<div><dt>${esc(t('hours'))}</dt><dd>${esc(n.hours)}</dd></div>` : ''}
+      ${n.schedule ? `<div><dt>${esc(t('usualTimes'))}</dt><dd>${n.schedule.map((d, i) => d ? `${esc(t('wd').split(',')[i])} ${esc(d.on)}–${esc(d.off)}` : '').filter(Boolean).join('<br>')}</dd></div>` : ''}
     </dl>
     ${ps.length ? `<div><h4>${esc(t('prices'))}</h4><ul class="plist">${ps.map(p => `<li><span>${esc(p.item)}</span><span class="price">${esc(p.price)}</span></li>`).join('')}</ul></div>` : ''}
     <div class="row-btns">

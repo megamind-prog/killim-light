@@ -234,6 +234,7 @@ export async function rebuildIndex() {
       reports: rep && rep.count >= REPORT_MIN ? rep : null,
       photos: (n.photos || []).map((p) => ({ url: photoUrl(n.id, p), w: p.w, h: p.h })),
       specials: specials.get(n.id) || [],
+      schedule: (n as any).schedule?.enabled ? (n as any).schedule.days : null,
       host: pr && (pr.name || pr.avatar) ? { name: pr.name || "", avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
       rating: {
         avg: +avg.toFixed(2), count: rs.length,
@@ -257,11 +258,12 @@ export async function readIndex() {
 export type LogEntry = { at: number; who: string; role: "team" | "owner"; action: string; id?: string; name?: string; detail?: string };
 const LOG_KEEP_MS = 90 * 864e5;
 export const whoLabel = (u: User | null) => !u ? "someone" : isPhoneLogin(u.email) ? "☎ " + phoneDigits(u.email!.split("@")[0]) : (u.email || u.id);
-export async function logEvent(u: User | null, role: LogEntry["role"], action: string, extra: { id?: string; name?: string; detail?: string } = {}) {
+export async function logEvent(u: User | null, role: LogEntry["role"], action: string, extra: { id?: string; name?: string; detail?: string; who?: string } = {}) {
   try {
     const at = Date.now();
     const key = `log/${String(at).padStart(14, "0")}-${Math.random().toString(36).slice(2, 7)}`;
-    await store().setJSON(key, { at, who: whoLabel(u), role, action, ...extra } satisfies LogEntry);
+    const { who, ...rest } = extra;
+    await store().setJSON(key, { at, who: who || whoLabel(u), role, action, ...rest } satisfies LogEntry);
     // Now and then, forget entries older than 90 days.
     if (Math.random() < 0.02) {
       const { blobs } = await store().list({ prefix: "log/" });

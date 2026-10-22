@@ -7,6 +7,7 @@ import {
   photoUrl, readAll, rebuildIndex, reportCounts, logEvent, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
+import { dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
 import { afterLightChange, announceSpecial, isUpcoming, MAX_SPECIALS, sanitizeSpecial, type HistoryDay, type Special } from "../lib/events.mts";
 
 const LIGHTS = ["green", "amber", "closed"] as const;
@@ -150,6 +151,12 @@ export default async (req: Request, context: Context) => {
     await logEvent(user, "owner", "remove", { id, name: nak.name });
     await rebuildIndex();
     return json({ ok: true, nakamals: await mine(user.id) });
+  } else if (action === "schedule") {
+    const r = sanitizeSchedule(body);
+    if (r.error) return bad(r.error);
+    (patch as any).schedule = r.schedule;
+    // Don't fire a time that already passed a few minutes ago just because the plan was saved.
+    (patch as any).schedLast = dueEvent(r.schedule, Date.now())?.key;
   } else if (action === "special") {
     const r = sanitizeSpecial(body);
     if (r.error) return bad(r.error);
@@ -170,7 +177,7 @@ export default async (req: Request, context: Context) => {
   }
   const next = { ...nak, ...patch, updatedAt: Date.now() };
   await s.setJSON("nak/" + id, next);
-  await logEvent(user, "owner", action, { id, name: next.name, detail: action === "light" ? body.light : action === "note" ? patch.note : undefined });
+  await logEvent(user, "owner", action, { id, name: next.name, detail: action === "light" ? body.light : action === "note" ? patch.note : action === "schedule" ? ((patch as any).schedule.enabled ? "on" : "off") : undefined });
   const approved = (await getStatus(id)).approved;
   if (approved) await rebuildIndex();
   // Alert phones that follow this nakamal, without making the owner wait.

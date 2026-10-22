@@ -109,8 +109,9 @@ function ownerCard(n) {
     <div class="line">${esc(updatedLine(n))}${n.approved ? ' · ' + esc(t('viewsWeek', { n: n.viewsWeek || 0 })) : ''}</div>
     <div class="prow2"><input class="field" id="note-${esc(n.id)}" maxlength="120" value="${esc(n.note || '')}" placeholder="${esc(t('notePh'))}" aria-label="${esc(t('noteAria'))}">
       <button class="btn" type="button" data-note>${esc(t('saveNote'))}</button></div>
+    ${n.schedule && n.schedule.enabled ? `<p class="hint">${esc(t('schedNow', { txt: schedText(n.schedule.days) }))}</p>` : ''}
     ${(n.specials || []).length ? `<p class="hint">📣 ${n.specials.map(sp => esc(sp.title)).join(' · ')}</p>` : ''}
-    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button></div>
+    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="schedule">${esc(t('schedBtn'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button></div>
   </div>`;
 }
 
@@ -264,10 +265,11 @@ function renderRegister(hasOthers) {
 
 // ---------- edit one nakamal: four short tabs instead of one long page ----------
 function renderEdit(n) {
-  const tabs = [['stats', t('tabStats')], ['specials', t('tabSpecials')], ['photos', t('tabPhotos')], ['kava', t('tabKava')], ['details', t('tabDetails')], ['more', t('tabMore')]];
+  const tabs = [['stats', t('tabStats')], ['specials', t('tabSpecials')], ['schedule', t('tabSchedule')], ['photos', t('tabPhotos')], ['kava', t('tabKava')], ['details', t('tabDetails')], ['more', t('tabMore')]];
   let body = '';
   if (editTab === 'photos') body = photosCard(n);
   if (editTab === 'stats') body = statsCard(n);
+  if (editTab === 'schedule') body = scheduleCard(n);
   if (editTab === 'specials') body = specialsCard(n);
   if (editTab === 'kava') body = `<form class="card" id="kavaForm"><h2>${esc(t('kavaDetails'))}</h2>${kavaFields(n)}
       <h2>${esc(t('prices'))}</h2><div id="prows">${priceRows(n.prices)}</div>
@@ -292,6 +294,7 @@ function renderEdit(n) {
   $('backList').onclick = () => { editId = null; render(); };
   if (editTab === 'photos') wirePhotos(n);
   if (editTab === 'specials') wireSpecials(n);
+  if (editTab === 'schedule') wireSchedule(n);
   if (editTab === 'kava') {
     wirePrices();
     $('kavaForm').onsubmit = async e => {
@@ -333,6 +336,43 @@ function statsCard(n) {
       <div class="wdays">${st.byWeekday.map((v, i) => `<div><span class="wbar"><i style="height:${Math.round(v / wmax * 100)}%"></i></span><b>${esc(wd[i])}</b><small>${v}</small></div>`).join('')}</div>
       ${st.usualStart ? `<p class="hint">${esc(t('statUsual', { t: st.usualStart }))}</p>` : ''}</div>
     <p class="hint">${esc(t('statTip'))}</p>`;
+}
+
+// ---------- light schedule ----------
+const wdNames = () => t('wd').split(',');
+function schedText(days) {
+  const wd = wdNames();
+  return days.map((d, i) => d ? `${wd[i]} ${d.on}–${d.off}` : null).filter(Boolean).join(' · ');
+}
+function scheduleCard(n) {
+  const sc = n.schedule || { enabled: false, days: [null, null, null, null, null, { on: '17:00', off: '23:00' }, { on: '17:00', off: '23:00' }] };
+  const wd = wdNames();
+  return `<form class="card authform" id="schedForm"><h2>${esc(t('schedTitle'))}</h2>
+    <p class="hint">${esc(t('schedHint'))}</p>
+    <label class="check"><input type="checkbox" id="schedOn" ${sc.enabled ? 'checked' : ''}>${esc(t('schedOn'))}</label>
+    <div class="schedgrid">
+      <span></span><b>${esc(t('schedOpen'))}</b><b>${esc(t('schedClose'))}</b>
+      ${wd.map((name, i) => { const d = sc.days[i]; return `<label class="check"><input type="checkbox" data-day="${i}" ${d ? 'checked' : ''}>${esc(name)}</label>
+        <input class="field" type="time" data-on="${i}" value="${esc(d ? d.on : '17:00')}" ${d ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedOpen'))}">
+        <input class="field" type="time" data-off="${i}" value="${esc(d ? d.off : '23:00')}" ${d ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedClose'))}">`; }).join('')}
+    </div>
+    <p class="hint">${esc(t('schedAfterMid'))} ${esc(t('schedLow'))}</p>
+    <div class="row-btns"><button class="btn" type="button" id="schedCopy">${esc(t('schedCopy'))}</button></div>
+    <button class="primary" type="submit">${esc(t('schedSave'))}</button><p class="msg" id="schedMsg"></p></form>`;
+}
+function wireSchedule(n) {
+  const f = $('schedForm');
+  f.querySelectorAll('[data-day]').forEach(c => c.onchange = () => { const i = c.dataset.day; f.querySelector(`[data-on="${i}"]`).disabled = f.querySelector(`[data-off="${i}"]`).disabled = !c.checked; });
+  $('schedCopy').onclick = () => {
+    const first = [...f.querySelectorAll('[data-day]')].find(c => c.checked); if (!first) return;
+    const on = f.querySelector(`[data-on="${first.dataset.day}"]`).value, off = f.querySelector(`[data-off="${first.dataset.day}"]`).value;
+    f.querySelectorAll('[data-day]').forEach(c => { if (c.checked) { f.querySelector(`[data-on="${c.dataset.day}"]`).value = on; f.querySelector(`[data-off="${c.dataset.day}"]`).value = off; } });
+  };
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const days = [0, 1, 2, 3, 4, 5, 6].map(i => f.querySelector(`[data-day="${i}"]`).checked ? { on: f.querySelector(`[data-on="${i}"]`).value, off: f.querySelector(`[data-off="${i}"]`).value } : null);
+    if (await act({ action: 'schedule', id: n.id, enabled: $('schedOn').checked, days }, t('schedSaved'), 'schedMsg')) setMsg('schedMsg', t('saved'), true);
+  };
 }
 
 // ---------- specials and events ----------

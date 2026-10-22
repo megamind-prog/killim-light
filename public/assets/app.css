@@ -511,3 +511,9 @@ details.card > summary::-webkit-details-marker { display: none; }
 .dash p { margin: 0; }
 .doc > .card { grid-template-columns: minmax(0, 1fr); }
 .codewrap, .doc pre { min-width: 0; max-width: 100%; }
+
+/* ===================== light schedule ===================== */
+.schedgrid { display: grid; grid-template-columns: minmax(70px, auto) minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+.schedgrid > b { font-size: .8rem; color: var(--muted); }
+.schedgrid .field:disabled { opacity: .4; }
+.schedgrid .field { padding: 8px 6px; font-size: .88rem; min-width: 0; }
