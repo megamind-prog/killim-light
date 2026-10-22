@@ -279,6 +279,7 @@ const T = {
   schedNow:       { bi: '⏰ Skedul: {txt}', en: '⏰ Schedule: {txt}' },
   schedLow:       { bi: 'Sapos kava i klosap finis, setem yelo yu wan.', en: 'If kava runs low, set amber yourself.' },
   usualTimes:     { bi: 'Taem we i stap open', en: 'Usual opening times' },
+  fromOsm:        { bi: 'Ples blong nakamal ia i kam long', en: 'Location from' },
   usuallyToday:   { bi: 'Stap open {on}–{off} tede', en: 'Usually open {on}–{off} today' },
   usuallyNotToday:{ bi: 'I no stap open tede', en: 'Not usually open today' },
   notConfirmed:   { bi: 'Ona i no stap long Killim Light yet, laet i no konfem.', en: "The owner isn't on Killim Light yet, so the light isn't confirmed." },

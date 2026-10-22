@@ -5,7 +5,7 @@ const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, directions, toast, mak
 const { start, authed, signOut } = KLAuthUI;
 const box = $('box');
 const KAVA = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
-let list = [], accounts = [], log = [], devkeys = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
+let list = [], accounts = [], log = [], devkeys = [], osm = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
 let view = 'today', addMode = 'many', bulk = [], bulkPicker = null, accSearch = '', nakSearch = '', editing = null, picker = null;
 
 start({
@@ -38,7 +38,7 @@ async function act(body, okText) {
   } catch (e) { toast(e.message); return null; }
 }
 
-function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; devkeys = r.devkeys || devkeys; settings = r.settings || settings; }
+function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; devkeys = r.devkeys || devkeys; osm = r.osm || osm; settings = r.settings || settings; }
 const wide = () => matchMedia('(min-width: 900px)').matches;
 const day = v => v ? new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
@@ -164,6 +164,8 @@ function toolsHtml() {
       <label class="check" for="setComments"><input type="checkbox" id="setComments" ${settings.comments ? 'checked' : ''}>Show written comments with ratings</label>
       <p class="hint">Off: customers give stars only. On: they can write a short comment, shown publicly. Turn on only when someone can watch for unkind comments.</p></div>
 
+    ${osmCard()}
+
     <div class="card"><h2>Developers using the open data (${devkeys.length})</h2>
       ${devkeys.length ? devkeys.sort((a, b) => b.week - a.week).map(k => `<div class="sprow"><div><b>${esc(k.name)}</b>${k.revoked ? ' <span class="pill l-closed">switched off</span>' : ''}
         <div class="hint">${esc(k.email)} · ${k.week} request${k.week === 1 ? '' : 's'} this week · ${k.hooks} webhook${k.hooks === 1 ? '' : 's'}${k.use ? ' · ' + esc(k.use) : ''}</div></div>
@@ -183,6 +185,16 @@ function toolsHtml() {
       </ol>
       <p class="hint">This page isn't linked from the public site. Only the emails on the team list can open it.</p></details>`;
 }
+function osmCard() {
+  const fresh = osm.filter(o => !o.imported && !o.near), done = osm.filter(o => o.imported).length;
+  return `<div class="card"><h2>Import nakamals from OpenStreetMap</h2>
+    <p class="hint">${osm.length} nakamals and kava bars are mapped on OpenStreetMap for Vanuatu. ${done ? `${done} already imported. ` : ''}Imported ones go on the map with no owner, grey "usually open" hours and a "Claim it" link for the owner. Untick any you know are closed.</p>
+    ${fresh.length ? `<div class="osmlist">${fresh.map(o => `<label class="check"><input type="checkbox" data-osm="${esc(o.osm)}" checked><span><b>${esc(o.name)}</b> <span class="hint">${esc(o.area)}</span></span></label>`).join('')}</div>
+      <div class="row"><label>Usually open<input class="field" type="time" id="oOn" value="17:00"></label><label>Until<input class="field" type="time" id="oOff" value="23:00"></label></div>
+      <div class="row-btns"><button class="btn go" type="button" id="osmGo">Import ${fresh.length} nakamal${fresh.length === 1 ? '' : 's'}</button></div>` : '<p class="hint">Nothing new to import.</p>'}
+    ${osm.filter(o => o.near && !o.imported).length ? `<p class="hint">Skipped because something is already on our map there: ${osm.filter(o => o.near && !o.imported).map(o => `${esc(o.name)} (near ${esc(o.near)})`).join(', ')}.</p>` : ''}
+    <p class="hint">Map data © OpenStreetMap contributors (ODbL). Names that were just "Kava bar" or "Nakamal" were given their area's name: rename them after a visit.</p></div>`;
+}
 function wireTools() {
   let bulk = null;
   box.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
@@ -197,6 +209,14 @@ function wireTools() {
   $('plForm').onsubmit = e => { e.preventDefault(); act({ action: 'createLogin', name: clean($('plName').value, 80), phone: $('plPhone').value, id: $('plNak').value }, 'Login created'); };
   $('plReset').onclick = () => act({ action: 'resetPin', phone: $('plPhone').value }, 'PIN reset');
   $('csv').onclick = downloadAll;
+  if ($('osmGo')) {
+    box.querySelectorAll('[data-osm]').forEach(c => c.onchange = () => { const n = box.querySelectorAll('[data-osm]:checked').length; $('osmGo').textContent = `Import ${n} nakamal${n === 1 ? '' : 's'}`; $('osmGo').disabled = !n; });
+    $('osmGo').onclick = () => {
+      const on = $('oOn').value, off = $('oOff').value;
+      const sel = [...box.querySelectorAll('[data-osm]:checked')].map(c => c.dataset.osm);
+      act({ action: 'importOsm', osm: sel, days: [0, 1, 2, 3, 4, 5, 6].map(() => ({ on, off })) }, `${sel.length} nakamals imported`);
+    };
+  }
   box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => act({ action: 'revokeKey', keyId: b.dataset.key, restore: !!b.dataset.restore }, b.dataset.restore ? 'Key switched on' : 'Key switched off'));
 }
 
@@ -209,7 +229,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';

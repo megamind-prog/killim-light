@@ -1,0 +1,226 @@
+[
+{
+"osm": "way/332948223",
+"name": "Nakamal Pango",
+"area": "Pango",
+"lat": -17.776595,
+"lng": 168.290287
+},
+{
+"osm": "way/332917995",
+"name": "Nakamal Teouma Valley",
+"area": "Teouma Valley",
+"lat": -17.786902,
+"lng": 168.373019
+},
+{
+"osm": "node/5350689724",
+"name": "Nakamal Korman 1",
+"area": "Korman",
+"lat": -17.744049,
+"lng": 168.3552
+},
+{
+"osm": "node/5349175328",
+"name": "Nakamal Manples",
+"area": "Manples",
+"lat": -17.722806,
+"lng": 168.318201
+},
+{
+"osm": "node/5349063834",
+"name": "Nakamal Korman 2",
+"area": "Korman",
+"lat": -17.739671,
+"lng": 168.334102
+},
+{
+"osm": "way/332853600",
+"name": "Nakamal Ipota",
+"area": "Ipota",
+"lat": -18.857353,
+"lng": 169.28777
+},
+{
+"osm": "way/331209813",
+"name": "Bamboo Kava Bar",
+"area": "Stade",
+"lat": -17.729416,
+"lng": 168.317337
+},
+{
+"osm": "way/1126128719",
+"name": "Kava bar Mele",
+"area": "Mele",
+"lat": -17.685483,
+"lng": 168.249035
+},
+{
+"osm": "way/332930307",
+"name": "24 Hour Kava Bar",
+"area": "Tagabe",
+"lat": -17.707252,
+"lng": 168.311028
+},
+{
+"osm": "way/723277793",
+"name": "Kava bar Beverly Hills",
+"area": "Beverly Hills",
+"lat": -17.725125,
+"lng": 168.324039
+},
+{
+"osm": "node/6784447185",
+"name": "The Kava House",
+"area": "Mele Maat",
+"lat": -17.686964,
+"lng": 168.263125
+},
+{
+"osm": "node/6114218196",
+"name": "Kava bar Port Vila",
+"area": "Port Vila",
+"lat": -17.757348,
+"lng": 168.359031
+},
+{
+"osm": "node/5350689725",
+"name": "Club Kava Nakamal",
+"area": "Korman",
+"lat": -17.745387,
+"lng": 168.358591
+},
+{
+"osm": "node/3176118871",
+"name": "Last Flight Kava Bar",
+"area": "Tagabe",
+"lat": -17.705821,
+"lng": 168.310535
+},
+{
+"osm": "node/6283844429",
+"name": "Kava bar Mele Maat",
+"area": "Mele Maat",
+"lat": -17.667624,
+"lng": 168.24824
+},
+{
+"osm": "node/3176271794",
+"name": "Blue Moon Kava Bar",
+"area": "Tagabe",
+"lat": -17.701208,
+"lng": 168.313118
+},
+{
+"osm": "node/3176264961",
+"name": "Blue Galaxy Kava Bar",
+"area": "Tagabe",
+"lat": -17.703857,
+"lng": 168.310575
+},
+{
+"osm": "node/3176271467",
+"name": "Balihae Kava Bar",
+"area": "Tagabe",
+"lat": -17.701237,
+"lng": 168.312117
+},
+{
+"osm": "node/6130106736",
+"name": "Banban Bountiful Kava Bar",
+"area": "Bombua",
+"lat": -15.507279,
+"lng": 167.233422
+},
+{
+"osm": "node/6309261617",
+"name": "Alvert Bue Kava bar",
+"area": "Leweton custom village",
+"lat": -15.49922,
+"lng": 167.207652
+},
+{
+"osm": "node/10577616441",
+"name": "Kava bar Freshwind 1",
+"area": "Freshwind",
+"lat": -15.515101,
+"lng": 167.180374
+},
+{
+"osm": "node/12312887977",
+"name": "Canal View Kava Bar",
+"area": "Luganville",
+"lat": -15.510609,
+"lng": 167.181765
+},
+{
+"osm": "node/6300381341",
+"name": "Kava bar Lausvatu",
+"area": "Lausvatu",
+"lat": -15.513274,
+"lng": 167.17384
+},
+{
+"osm": "node/6816377885",
+"name": "Kula Bamboo Kava Bar",
+"area": "Banban",
+"lat": -15.520348,
+"lng": 167.240724
+},
+{
+"osm": "node/6300384619",
+"name": "Green light kava bar",
+"area": "Lausvatu",
+"lat": -15.514877,
+"lng": 167.173271
+},
+{
+"osm": "node/6309261452",
+"name": "Kava bar Banban",
+"area": "Banban",
+"lat": -15.518001,
+"lng": 167.230917
+},
+{
+"osm": "node/6334554105",
+"name": "Kava bar Freshwind 2",
+"area": "Freshwind",
+"lat": -15.513109,
+"lng": 167.181621
+},
+{
+"osm": "node/6128029058",
+"name": "Big Si Kava Bar",
+"area": "Banban",
+"lat": -15.517421,
+"lng": 167.257455
+},
+{
+"osm": "node/6311706886",
+"name": "Sakele kava bar",
+"area": "Lausvatu",
+"lat": -15.507113,
+"lng": 167.187238
+},
+{
+"osm": "node/6597807885",
+"name": "Kava bar Imanaka",
+"area": "Imanaka",
+"lat": -19.474884,
+"lng": 169.233664
+},
+{
+"osm": "node/3156521934",
+"name": "Yoyo's Kava Bar",
+"area": "Lénakel",
+"lat": -19.537385,
+"lng": 169.280229
+},
+{
+"osm": "node/6316021547",
+"name": "Seksek kava bar",
+"area": "Sector 3",
+"lat": -15.240291,
+"lng": 167.12752
+}
+]

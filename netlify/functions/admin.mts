@@ -6,6 +6,7 @@
 import type { Config, Context } from "@netlify/functions";
 import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
 import { sanitizeSchedule } from "../lib/schedule.mts";
+import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
@@ -97,6 +98,20 @@ async function removeNakamal(id: string) {
     deletePrefix(`rating/${id}/`), deletePrefix(`report/${id}/`), deletePrefix(`views/${id}/`), deletePrefix(`push/${id}/`),
     deletePrefix(`special/${id}/`), deletePrefix(`history/${id}/`)]);
 }
+
+// Nakamals mapped on OpenStreetMap (© OpenStreetMap contributors, ODbL), ready to import as listings with no owner.
+type OsmNak = { osm: string; name: string; area: string; lat: number; lng: number };
+const metresApart = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const R = Math.PI / 180, h = Math.sin((b.lat - a.lat) * R / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin((b.lng - a.lng) * R / 2) ** 2;
+  return 12742000 * Math.asin(Math.sqrt(h));
+};
+function osmStatus(naks: Nakamal[]) {
+  return (osmNakamals as OsmNak[]).map((o) => {
+    const done = naks.find((n) => (n as any).osmId === o.osm);
+    const near = done ? null : naks.find((n) => metresApart(n, o) < 40);
+    return { ...o, imported: !!done, near: near ? near.name : null };
+  });
+}
 // Developers' API keys, for the team's Tools tab: who uses the open data and how much.
 async function devKeys() {
   const [keys, hooks] = await Promise.all([readAll<ApiKey>("apikey/"), store().list({ prefix: "hook/" })]);
@@ -121,7 +136,7 @@ export default async (req: Request, context?: Context) => {
   if (!user) return bad("Please log in.", 401);
   if (!isAdmin(user)) return bad("This page is only for the Killim Light team.", 403);
   const s = store();
-  const everything = async () => { const [settings, nakamals, accts, log, keys] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys()]); return { settings, nakamals, accounts: accts, log, devkeys: keys }; };
+  const everything = async () => { const [settings, nakamals, accts, log, keys] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any) }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
   if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
 
@@ -278,6 +293,27 @@ export default async (req: Request, context?: Context) => {
     await logEvent(user, "team", "bulkAdd", { detail: `${added.length} nakamal${added.length === 1 ? "" : "s"}: ${added.slice(0, 6).join(", ")}${added.length > 6 ? "…" : ""}` });
     await rebuildIndex();
     return reply({ added: added.length });
+  }
+
+  // Import nakamals mapped on OpenStreetMap, skipping ones already imported or already on our map.
+  if (action === "importOsm") {
+    const want = new Set((Array.isArray(body?.osm) ? body.osm : []).map((x: unknown) => clean(x, 40)));
+    const sched = sanitizeSchedule({ enabled: true, days: body?.days });
+    if (sched.error) return bad(sched.error);
+    const naks = [...(await readAll<Nakamal>("nak/")).values()];
+    const todo = osmStatus(naks).filter((o) => want.has(o.osm) && !o.imported && !o.near);
+    if (!todo.length) return bad("Nothing new to import.");
+    const now = Date.now();
+    for (const o of todo) {
+      const id = newId();
+      const nak = { id, owner: null, name: o.name, area: o.area, about: "", hours: "", lat: o.lat, lng: o.lng, prices: [], light: "closed", lightAt: null, note: "",
+        createdAt: now, updatedAt: now, schedule: sched.schedule, osmId: o.osm };
+      await s.setJSON("nak/" + id, nak);
+      await s.setJSON("status/" + id, { approved: true, approvedAt: now, visit: { visited: false, notes: "Imported from OpenStreetMap " + o.osm } });
+    }
+    await logEvent(user, "team", "importOsm", { detail: `${todo.length} nakamal${todo.length === 1 ? "" : "s"} from OpenStreetMap` });
+    await rebuildIndex();
+    return reply({ imported: todo.length });
   }
 
   // ----- accounts -----

@@ -525,3 +525,4 @@ details.card > summary::-webkit-details-marker { display: none; }
 .bulkpin div { width: 26px; height: 26px; border-radius: 50%; background: var(--kava); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
 .daypick { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .claimbox { background: var(--field); border-radius: 12px; padding: 10px 12px; font-size: .9rem; display: grid; gap: 6px; }
+.osmlist { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
