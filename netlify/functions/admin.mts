@@ -5,6 +5,7 @@
 //                   | addNakamal | edit | editAccount | setPassword | deleteAccount | lightAll, ... }
 import type { Config, Context } from "@netlify/functions";
 import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
+import { sanitizeSchedule } from "../lib/schedule.mts";
 import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
@@ -32,6 +33,7 @@ async function overview() {
     for (const [k, v] of views) { const [id, day] = k.split("/"); if (id === n.id && week.has(day)) viewsWeek += v.count || 0; }
     return {
       ...n, status: st, contact: c ? { owner: c.owner, phone: c.phone } : null,
+      claimContact: (st as any).claim ? (contacts.get((st as any).claim.userId) ? { owner: contacts.get((st as any).claim.userId)!.owner, phone: contacts.get((st as any).claim.userId)!.phone } : null) : null,
       loginType: !n.owner ? null : n.ownerEmail ? "email" : "phone",
       photos: (n.photos || []).map((p) => ({ id: p.id, url: photoUrl(n.id, p) })),
       host: pr ? { name: pr.name, avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
@@ -252,6 +254,32 @@ export default async (req: Request, context?: Context) => {
     return reply();
   }
 
+  // Add many nakamals in one go (no owner yet). Each gets the same usual hours, e.g. every day 17:00–23:00.
+  // The light stays grey ("usually open") until an owner joins and sets it themselves.
+  if (action === "bulkAdd") {
+    const items = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
+    if (!items.length) return bad("Add at least one nakamal.");
+    const sched = sanitizeSchedule({ enabled: true, days: body?.days });
+    if (sched.error) return bad(sched.error);
+    const approve = !!body?.approve, now = Date.now(), added: string[] = [];
+    for (const [i, it] of items.entries()) {
+      const r = sanitizeDetails({ ...it, hours: clean(body?.hoursText, 80) });
+      if (r.error) return bad(`Row ${i + 1}: ${r.error}`);
+    }
+    for (const it of items) {
+      const r = sanitizeDetails({ ...it, hours: clean(body?.hoursText, 80) });
+      const id = newId();
+      const nak: Nakamal = { id, owner: null, ...r.details!, prices: [], light: "closed", lightAt: null, note: "", createdAt: now, updatedAt: now } as Nakamal;
+      (nak as any).schedule = sched.schedule;
+      await s.setJSON("nak/" + id, nak);
+      await s.setJSON("status/" + id, { approved: approve, ...(approve ? { approvedAt: now } : {}), visit: approve ? { visited: true, visitedAt: now, date: vuDate(now), notes: "Added by the team (bulk)" } : {} } satisfies Status);
+      added.push(nak.name);
+    }
+    await logEvent(user, "team", "bulkAdd", { detail: `${added.length} nakamal${added.length === 1 ? "" : "s"}: ${added.slice(0, 6).join(", ")}${added.length > 6 ? "…" : ""}` });
+    await rebuildIndex();
+    return reply({ added: added.length });
+  }
+
   // ----- accounts -----
   if (action === "editAccount" || action === "setPassword" || action === "deleteAccount") {
     const uid = clean(body?.userId, 80);
@@ -330,6 +358,17 @@ export default async (req: Request, context?: Context) => {
     }
   } else if (action === "delete") {
     await removeNakamal(id);
+  } else if (action === "approveClaim" || action === "rejectClaim") {
+    const c = (st as any).claim;
+    if (!c) return bad("No claim on this nakamal.");
+    if (action === "approveClaim") {
+      const users = await allUsers();
+      const target = users.find((u) => u.id === c.userId);
+      if (!target) return bad("That login doesn't exist any more.", 404);
+      await s.setJSON("nak/" + id, { ...nak, owner: target.id, ownerEmail: isPhoneLogin(target.email) ? undefined : target.email, updatedAt: Date.now() });
+    }
+    const { claim, ...rest } = st as any;
+    await s.setJSON("status/" + id, rest);
   } else if (action === "unassign") {
     if (nak.owner) await unassignNakamal(nak);
   } else if (action === "edit") {
@@ -349,7 +388,7 @@ export default async (req: Request, context?: Context) => {
   } else {
     return bad("Unknown action.");
   }
-  const detail = action === "light" ? body.light : action === "visit" ? (body?.visited ? "visited" : body?.date ? "visit " + clean(body.date, 10) : "notes") : action === "assign" ? clean(body?.email, 120) : undefined;
+  const detail = action === "approveClaim" ? (st as any).claim?.login : action === "light" ? body.light : action === "visit" ? (body?.visited ? "visited" : body?.date ? "visit " + clean(body.date, 10) : "notes") : action === "assign" ? clean(body?.email, 120) : undefined;
   await logEvent(user, "team", action, { id, name: nak.name, detail });
   await rebuildIndex();
   return reply();

@@ -517,3 +517,11 @@ details.card > summary::-webkit-details-marker { display: none; }
 .schedgrid > b { font-size: .8rem; color: var(--muted); }
 .schedgrid .field:disabled { opacity: .4; }
 .schedgrid .field { padding: 8px 6px; font-size: .88rem; min-width: 0; }
+
+/* ===================== bulk add, claims ===================== */
+.picker.big { height: 420px; }
+.bulkrow { display: grid; grid-template-columns: 28px minmax(0, 1.4fr) minmax(0, 1fr) 38px; gap: 8px; align-items: center; padding: 4px 0; }
+.bulkrow .num { width: 26px; height: 26px; border-radius: 50%; background: var(--kava); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
+.bulkpin div { width: 26px; height: 26px; border-radius: 50%; background: var(--kava); color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
+.daypick { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.claimbox { background: var(--field); border-radius: 12px; padding: 10px 12px; font-size: .9rem; display: grid; gap: 6px; }

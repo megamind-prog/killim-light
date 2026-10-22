@@ -4,7 +4,7 @@
 import type { Config, Context } from "@netlify/functions";
 import {
   avatarUrl, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getStatus, imgStore, isAdmin, isPhoneLogin, json, newId,
-  photoUrl, readAll, rebuildIndex, reportCounts, logEvent, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
+  photoUrl, readAll, rebuildIndex, reportCounts, logEvent, phoneDigits, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 import { dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
@@ -121,6 +121,23 @@ export default async (req: Request, context: Context) => {
     return json({ ok: true, id, nakamals: await mine(user.id) });
   }
 
+  // "I run this nakamal": ask the team to hand over a listing the team added without an owner.
+  if (action === "claim") {
+    const cid = clean(body?.id, 60);
+    const cn = cid ? await getNak(cid) : null;
+    if (!cn) return bad("Unknown nakamal.", 404);
+    if (cn.owner) return bad(cn.owner === user.id ? "This nakamal is already yours." : "This nakamal already has an owner. Contact the Killim Light team if that's wrong.", 409);
+    const cst = await getStatus(cid);
+    if (!contact) {
+      const owner = clean(body?.contact?.owner, 80), phone = clean(body?.contact?.phone, 30);
+      if (owner.length < 2 || phone.replace(/\D/g, "").length < 5) return bad("Enter your name and a phone number our team can call.");
+      await s.setJSON("contact/" + user.id, { owner, phone, email: phoneLogin ? undefined : user.email, at: Date.now() });
+    }
+    await s.setJSON("status/" + cid, { ...cst, claim: { userId: user.id, login: phoneLogin ? "☎ " + phoneDigits(user.email!.split("@")[0]) : user.email, at: Date.now() } });
+    await logEvent(user, "owner", "claim", { id: cid, name: cn.name });
+    return json({ ok: true, claimed: cn.name, nakamals: await mine(user.id) });
+  }
+
   // Everything else acts on one of the owner's own nakamals.
   const id = clean(body?.id, 60);
   const nak = id ? await getNak(id) : null;
@@ -137,6 +154,7 @@ export default async (req: Request, context: Context) => {
   } else if (action === "light") {
     if (!LIGHTS.includes(body?.light)) return bad("Choose a light.");
     patch.light = body.light; patch.lightAt = Date.now();
+    (patch as any).ownerUsedLight = true;
   } else if (action === "note") {
     patch.note = clean(body?.note, 120);
   } else if (action === "removePhoto") {
@@ -155,6 +173,7 @@ export default async (req: Request, context: Context) => {
     const r = sanitizeSchedule(body);
     if (r.error) return bad(r.error);
     (patch as any).schedule = r.schedule;
+    (patch as any).ownerUsedLight = true;
     // Don't fire a time that already passed a few minutes ago just because the plan was saved.
     (patch as any).schedLast = dueEvent(r.schedule, Date.now())?.key;
   } else if (action === "special") {

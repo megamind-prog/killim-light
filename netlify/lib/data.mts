@@ -235,6 +235,7 @@ export async function rebuildIndex() {
       photos: (n.photos || []).map((p) => ({ url: photoUrl(n.id, p), w: p.w, h: p.h })),
       specials: specials.get(n.id) || [],
       schedule: (n as any).schedule?.enabled ? (n as any).schedule.days : null,
+      claimed: !!n.owner,
       host: pr && (pr.name || pr.avatar) ? { name: pr.name || "", avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
       rating: {
         avg: +avg.toFixed(2), count: rs.length,

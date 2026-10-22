@@ -9,6 +9,8 @@ export default async () => {
   const s = store(), now = Date.now();
   let changed = 0;
   for (const n of naks.values()) {
+    // Listings the team added without an owner only show their usual hours; nobody is there to confirm the kava.
+    if (!n.owner || !(n as any).ownerUsedLight) continue;
     const due = dueEvent(n.schedule, now, n.schedLast);
     if (!due) continue;
     const next = n.light === due.light ? { ...n, schedLast: due.key } : { ...n, light: due.light, lightAt: now, updatedAt: now, schedLast: due.key };

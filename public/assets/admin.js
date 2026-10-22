@@ -6,7 +6,7 @@ const { start, authed, signOut } = KLAuthUI;
 const box = $('box');
 const KAVA = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
 let list = [], accounts = [], log = [], devkeys = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
-let view = 'today', accSearch = '', nakSearch = '', editing = null, picker = null;
+let view = 'today', addMode = 'many', bulk = [], bulkPicker = null, accSearch = '', nakSearch = '', editing = null, picker = null;
 
 start({
   box, allowSignup: false, title: () => 'Team login', intro: () => 'For the Killim Light team only.',
@@ -15,7 +15,7 @@ start({
     $('who').innerHTML = `<span>${esc(user.email || '')}</span> <button class="link" type="button" id="out">Log out</button>`;
     $('out').onclick = signOut;
     await reload();
-    setInterval(() => { if (!document.hidden && !editing && view !== 'add' && !box.contains(document.activeElement)) reload(true); }, 60000);
+    setInterval(() => { if (!document.hidden && !editing && view !== 'add' && !bulk.length && !box.contains(document.activeElement)) reload(true); }, 60000);
   },
 });
 
@@ -44,8 +44,10 @@ const day = v => v ? new Date(v).toLocaleDateString([], { day: 'numeric', month:
 
 function render() {
   if (picker) { picker.remove(); picker = null; }
+  if (view !== 'add' && bulkPicker) { bulkPicker.remove(); bulkPicker = null; }
+  if (view === 'add' && addMode === 'many') syncBulk();
   const pending = list.filter(n => !n.status.approved), reported = list.filter(n => n.reports);
-  const todo = pending.length + reported.length;
+  const todo = pending.length + reported.length + list.filter(n => n.status.claim).length;
   const tabs = [['today', `Today${todo ? ` <span class="badge">${todo}</span>` : ''}`], ['nak', `Nakamals <small>${list.length}</small>`], ['acc', `Accounts <small>${accounts.length}</small>`],
     ['log', 'Activity'], ['tools', 'Tools & settings']];
   const nav = `<nav class="chiefnav" role="tablist" aria-label="Team page">${tabs.map(([k, l]) => `<button type="button" role="tab" data-view="${k}" aria-selected="${view === k}">${l}</button>`).join('')}
@@ -72,13 +74,15 @@ function render() {
 // ---------- Today: only what needs the team ----------
 function todayHtml() {
   const live = list.filter(n => n.status.approved), pending = list.filter(n => !n.status.approved), reported = list.filter(n => n.reports);
+  const claims = list.filter(n => n.status.claim);
   const ready = live.filter(n => n.shown === 'green').length, idle = accounts.filter(a => !a.nakamals.length && !a.team);
   const stat = (n, label, cls = '') => `<div class="stat ${cls}"><b>${n}</b><span>${label}</span></div>`;
-  const clear = !pending.length && !reported.length;
+  const clear = !pending.length && !reported.length && !claims.length;
   return `<div class="stats">${stat(ready, 'kava ready now', 'l-green')}${stat(live.length, 'on the public map')}${stat(pending.length, 'waiting for a visit', pending.length ? 'l-amber' : '')}${stat(reported.length, 'reported lights', reported.length ? 'l-closed' : '')}</div>
     ${clear ? `<div class="card allclear"><h3>All clear ✓</h3><p class="hint">No registrations waiting and no reported lights.</p></div>` : ''}
     ${pending.length ? `<div class="card"><h2>Waiting for a visit (${pending.length})</h2>${pending.map(listRow).join('')}</div>` : ''}
     ${reported.length ? `<div class="card"><h2>Reported by customers (${reported.length})</h2>${reported.map(listRow).join('')}</div>` : ''}
+    ${claims.length ? `<div class="card"><h2>Owners claiming a listing (${claims.length})</h2>${claims.map(listRow).join('')}<p class="hint">Call them to check they really run it, then open it and tap “Give it to them”.</p></div>` : ''}
     ${idle.length ? `<div class="card"><h2>Accounts with no nakamal yet (${idle.length})</h2>
       ${idle.slice(0, 8).map(a => `<div class="lrow"><div class="lmain"><b>${esc((a.contact && a.contact.owner) || a.name || a.email || a.phone)}</b><span class="hint">${esc(a.email || '☎ ' + a.phone)} · joined ${day(a.createdAt)}</span></div><button class="btn" type="button" data-go-acc="${esc(a.email || a.phone || '')}">Open</button></div>`).join('')}
       <p class="hint">Usually an owner who started signing up but didn't register their nakamal. Give them a call.</p></div>` : ''}
@@ -87,7 +91,7 @@ function todayHtml() {
 // One compact line per nakamal; tapping it opens the full controls in the side panel.
 function listRow(n) {
   const st = n.status, v = st.visit || {}, ok = !!st.approved, l = ok ? n.shown : 'pending';
-  const what = n.reports ? `⚠️ ${n.reports.count} report${n.reports.count === 1 ? '' : 's'}: ${reportWhat(n.reports)}` : ok ? updatedLine(n) : v.visited ? 'Visited · ready to approve' : v.date ? 'Visit booked ' + v.date : 'Registered ' + day(n.createdAt);
+  const what = n.status.claim ? `🙋 Claimed by ${n.status.claim.login}` : n.reports ? `⚠️ ${n.reports.count} report${n.reports.count === 1 ? '' : 's'}: ${reportWhat(n.reports)}` : ok ? updatedLine(n) : v.visited ? 'Visited · ready to approve' : v.date ? 'Visit booked ' + v.date : 'Registered ' + day(n.createdAt);
   return `<div class="lrow ${drawer === n.id ? 'sel' : ''}" data-open="${esc(n.id)}" role="button" tabindex="0">
     <span class="ldot l-${l}"><span class="dot">${LIGHT[l] ? LIGHT[l].sym : ''}</span></span>
     <div class="lmain"><b>${esc(n.name)}</b><span class="hint">${esc([n.area, (n.contact && n.contact.owner) || '', (n.contact && n.contact.phone) || ''].filter(Boolean).join(' · '))}</span></div>
@@ -205,7 +209,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';
@@ -223,6 +227,8 @@ function rowHtml(n) {
   return `<div class="adm" data-id="${esc(n.id)}">
     <div class="head"><span class="pill l-${l}"><span class="dot">${LIGHT[l].sym}</span>${ok ? 'On map · ' + LIGHT[l].short : v.visited ? 'Visited · ready to approve' : v.date ? 'Visit booked ' + esc(v.date) : 'Waiting for a visit'}</span><b>${esc(n.name)}</b></div>
     <div class="line">${esc(n.area || 'No area given')} · registered ${n.createdAt ? new Date(n.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''}${ok ? ' · ' + esc(updatedLine(n)) + ` · ${n.viewsWeek || 0} view${n.viewsWeek === 1 ? '' : 's'} this week` : ''}</div>
+    ${n.status.claim ? `<div class="pendingnote hint">🙋 <b>${esc(n.status.claim.login)}</b> says they run this nakamal${n.claimContact ? ` · ${esc(n.claimContact.owner)} · <b style="user-select:all">${esc(n.claimContact.phone)}</b>` : ''}.
+      <div class="row-btns"><button class="btn go" type="button" data-a="approveclaim">Give it to them</button><button class="btn" type="button" data-a="rejectclaim">Not theirs</button></div></div>` : ''}
     ${(n.specials || []).map(sp => `<p class="hint">📣 <b>${esc(sp.title)}</b> · ${esc(sp.date)}${sp.from ? ' ' + esc(sp.from) : ''} <button class="link" type="button" data-a="rmspecial" data-sp="${esc(sp.id)}">Remove</button></p>`).join('')}
     ${n.reports ? `<p class="pendingnote hint">⚠️ ${n.reports.count} customer${n.reports.count === 1 ? '' : 's'} report: ${esc(reportWhat(n.reports))}. <button class="link" data-a="clearrep">Clear reports</button></p>` : ''}
     <div class="contact">
@@ -277,6 +283,8 @@ function wireRow(row) {
     if (a === 'unassign') act({ action: 'unassign', id }, 'Owner login removed');
     if (a === 'del') row.querySelector('[data-a=delyes]').hidden = false;
     if (a === 'delyes') act({ action: 'delete', id }, 'Deleted');
+    if (a === 'approveclaim') act({ action: 'approveClaim', id }, 'Handed over to the owner');
+    if (a === 'rejectclaim') act({ action: 'rejectClaim', id }, 'Claim turned down');
     if (a === 'rmspecial') act({ action: 'removeSpecial', id, specialId: b.dataset.sp }, 'Special removed');
     if (a === 'rmphoto') act({ action: 'removePhoto', id, photoId: b.dataset.photo }, 'Photo removed');
     if (a === 'rmavatar') act({ action: 'removeAvatar', id }, 'Profile picture removed');
@@ -336,23 +344,72 @@ function openEdit(id) {
 }
 
 function addHtml() {
-  return `<div class="card"><h2>Add a nakamal</h2>
+  const modes = `<div class="seg" role="group" aria-label="How many"><button type="button" data-addmode="many" aria-pressed="${addMode === 'many'}">Many at once</button><button type="button" data-addmode="one" aria-pressed="${addMode === 'one'}">One, with every detail</button></div>`;
+  if (addMode === 'one') return `<div class="card"><h2>Add a nakamal</h2>${modes}
     <p class="hint">For nakamals the team adds itself. You can give it to an owner's login now or later (Support tools → Move to another login).</p>
     <form class="authform" id="addForm">${fieldsHtml({}, null)}
       <label for="aLogin">Owner's login (optional)<input class="field" id="aLogin" maxlength="120" placeholder="Their email, or the phone number of a phone + PIN login"></label>
       <label class="check" for="aApprove"><input type="checkbox" id="aApprove">We've visited: put it on the public map straight away</label>
       <div class="row-btns"><button class="btn go" type="submit">Add nakamal</button></div></form></div>`;
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return `<div class="card"><h2>Add many nakamals</h2>${modes}
+    <p class="hint">Tap the map where each nakamal is, then type its name. They go on the map with no owner and the usual hours below; the pin stays grey ("usually open") until the owner joins and sets the light. Owners can claim their listing from its page.</p>
+    <div class="picker big" id="bulkMap"></div>
+    <div id="bulkRows">${bulk.length ? bulk.map((b, i) => `<div class="bulkrow"><span class="num">${i + 1}</span>
+      <input class="field" data-bname="${i}" maxlength="80" placeholder="Nakamal name" value="${esc(b.name)}" aria-label="Name ${i + 1}">
+      <input class="field" data-barea="${i}" maxlength="80" placeholder="Area (optional)" value="${esc(b.area)}" aria-label="Area ${i + 1}">
+      <button class="ibtn" type="button" data-bdel="${i}" aria-label="Remove ${i + 1}">✕</button></div>`).join('') : '<p class="hint">No pins yet. Tap the map to add the first nakamal.</p>'}</div>
+    <h4>Usual hours for all of them</h4>
+    <div class="row"><label>Open<input class="field" type="time" id="bOn" value="17:00"></label><label>Close<input class="field" type="time" id="bOff" value="23:00"></label></div>
+    <div class="daypick">${wd.map((d, i) => `<label class="check"><input type="checkbox" data-bday="${i}" checked>${d}</label>`).join('')}</div>
+    <label class="check"><input type="checkbox" id="bApprove" checked>Put them on the public map now</label>
+    <div class="row-btns"><button class="btn go" type="button" id="bSave" ${bulk.length ? '' : 'disabled'}>Add ${bulk.length || ''} nakamal${bulk.length === 1 ? '' : 's'}</button>${bulk.length ? '<button class="btn" type="button" id="bClear">Clear all</button>' : ''}</div></div>`;
 }
 function wireAdd() {
-  picker = makePicker($('picker'), $('locText'), null, $('useLoc'));
-  $('addForm').onsubmit = async e => {
-    e.preventDefault();
-    const f = readFields();
-    if (f.lat == null) { toast('Tap the map to show where the nakamal is.'); return; }
-    const approve = $('aApprove').checked;
-    const r = await act({ action: 'addNakamal', ...f, ownerLogin: clean($('aLogin').value, 120), approve }, approve ? 'Added and on the map' : 'Added: waiting for a visit');
-    if (r) { view = 'nak'; filter = approve ? 'live' : 'pending'; render(); }
+  box.querySelectorAll('[data-addmode]').forEach(b => b.onclick = () => { addMode = b.dataset.addmode; render(); });
+  if (addMode === 'one') {
+    picker = makePicker($('picker'), $('locText'), null, $('useLoc'));
+    $('addForm').onsubmit = async e => {
+      e.preventDefault();
+      const f = readFields();
+      if (f.lat == null) { toast('Tap the map to show where the nakamal is.'); return; }
+      const approve = $('aApprove').checked;
+      const r = await act({ action: 'addNakamal', ...f, ownerLogin: clean($('aLogin').value, 120), approve }, approve ? 'Added and on the map' : 'Added: waiting for a visit');
+      if (r) { view = 'nak'; filter = approve ? 'live' : 'pending'; render(); }
+    };
+    return;
+  }
+  // Many at once: one map, a numbered pin per nakamal.
+  const keep = bulkPicker && bulkPicker.getCenter ? { c: bulkPicker.getCenter(), z: bulkPicker.getZoom() } : null;
+  if (bulkPicker) { bulkPicker.remove(); bulkPicker = null; }
+  const m = KL.makeMap($('bulkMap'), { region: 'efate' });
+  if (keep) m.setView(keep.c, keep.z, { animate: false });
+  bulkPicker = m;
+  const numIcon = i => L.divIcon({ className: 'bulkpin', html: `<div>${i + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+  bulk.forEach((b, i) => L.marker([b.lat, b.lng], { icon: numIcon(i), draggable: true }).addTo(m).on('dragend', e => { const ll = e.target.getLatLng(); b.lat = +ll.lat.toFixed(6); b.lng = +ll.lng.toFixed(6); }));
+  // Existing nakamals as small grey dots, so nobody gets added twice.
+  list.forEach(n => L.circleMarker([n.lat, n.lng], { radius: 5, color: '#fff', weight: 2, fillColor: '#7d7466', fillOpacity: 1 }).bindTooltip(n.name).addTo(m));
+  m.on('click', e => {
+    if (bulk.length >= 50) return toast('Up to 50 at a time.');
+    syncBulk();
+    bulk.push({ lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6), name: '', area: '' });
+    render();
+    const f = box.querySelector(`[data-bname="${bulk.length - 1}"]`); if (f) f.focus();
+  });
+  box.querySelectorAll('[data-bdel]').forEach(b => b.onclick = () => { syncBulk(); bulk.splice(+b.dataset.bdel, 1); render(); });
+  if ($('bClear')) $('bClear').onclick = () => { bulk = []; render(); };
+  $('bSave').onclick = async () => {
+    syncBulk();
+    const empty = bulk.findIndex(b => b.name.trim().length < 2);
+    if (empty >= 0) { toast(`Type a name for pin ${empty + 1}.`); box.querySelector(`[data-bname="${empty}"]`)?.focus(); return; }
+    const on = $('bOn').value, off = $('bOff').value;
+    const days = [0, 1, 2, 3, 4, 5, 6].map(i => box.querySelector(`[data-bday="${i}"]`).checked ? { on, off } : null);
+    const r = await act({ action: 'bulkAdd', items: bulk.map(b => ({ name: b.name.trim(), area: b.area.trim(), lat: b.lat, lng: b.lng })), days, approve: $('bApprove').checked }, `${bulk.length} nakamal${bulk.length === 1 ? '' : 's'} added`);
+    if (r) { bulk = []; if (bulkPicker) { bulkPicker.remove(); bulkPicker = null; } view = 'nak'; filter = 'all'; render(); }
   };
+}
+function syncBulk() {
+  bulk.forEach((b, i) => { const n = box.querySelector(`[data-bname="${i}"]`), a = box.querySelector(`[data-barea="${i}"]`); if (n) b.name = n.value; if (a) b.area = a.value; });
 }
 
 // ---------- accounts: everyone registered, in one place ----------

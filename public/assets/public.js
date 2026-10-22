@@ -22,6 +22,10 @@ const lateOk = n => !!n.closeTime && (n.closeTime >= '23:00' || n.closeTime < '0
 const moreActive = () => [more.price, more.from, more.str, more.late].filter(Boolean).length;
 const passMore = n => (!more.price || (priceNum(n) != null && priceNum(n) <= +more.price)) && (!more.from || n.kavaFrom === more.from)
   && (!more.str || n.strength === more.str) && (!more.late || lateOk(n));
+function usualLine(n) {
+  const d = n.schedule && n.schedule[new Date(Date.now() + 11 * 3600e3).getUTCDay()];
+  return d ? t('usuallyToday', { on: d.on, off: d.off }) : t('usuallyNotToday');
+}
 const vuToday = () => new Date(Date.now() + 11 * 3600e3).toISOString().slice(0, 10);
 function spWhen(sp) {
   const d = sp.date === vuToday() ? t('spToday') : sp.date === new Date(Date.now() + 35 * 3600e3).toISOString().slice(0, 10) ? t('spTomorrow') : sp.date.slice(5);
@@ -61,8 +65,9 @@ const paintHint = () => { $('zoomHint').hidden = near() || nakamals.size === 0; 
 
 function popupHtml(n) {
   const l = lightOf(n);
-  return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
-    <div class="line">${esc(updatedLine(n))}</div>
+  return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3>${n.claimed === false && n.schedule ? `<span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span>`
+    : `<span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
+    <div class="line">${esc(updatedLine(n))}</div>`}
     ${n.note ? `<div class="note">${esc(n.note)}</div>` : ''}
     <div class="popbtns"><button class="btn go" type="button" data-route="${esc(n.id)}">➜ ${esc(t('directions'))}</button>
     <button class="btn" type="button" data-pop="${esc(n.id)}">${esc(t('details'))}</button></div></div>`;
@@ -171,7 +176,8 @@ function itemHtml(n) {
       <span class="itext">
         <span class="ititle"><span class="name">${esc(n.name)}</span></span>
         ${where ? `<span class="imeta">${esc(where)}</span>` : ''}
-        <span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>
+        ${n.claimed === false && n.schedule ? `<span class="istate"><span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span></span>`
+          : `<span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>`}
         ${n.note ? `<span class="inote">${esc(n.note)}</span>` : ''}
         ${(n.specials || []).slice(0, filter === 'specials' ? 3 : 1).map(sp => `<span class="ispecial">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${filter === 'specials' && sp.text ? ` · ${esc(sp.text)}` : ''}</span>`).join('')}
         ${facts.length ? `<span class="ifacts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
@@ -201,6 +207,7 @@ function detailsHtml(n, st, ps) {
       ${n.schedule ? `<div><dt>${esc(t('usualTimes'))}</dt><dd>${n.schedule.map((d, i) => d ? `${esc(t('wd').split(',')[i])} ${esc(d.on)}–${esc(d.off)}` : '').filter(Boolean).join('<br>')}</dd></div>` : ''}
     </dl>
     ${ps.length ? `<div><h4>${esc(t('prices'))}</h4><ul class="plist">${ps.map(p => `<li><span>${esc(p.item)}</span><span class="price">${esc(p.price)}</span></li>`).join('')}</ul></div>` : ''}
+    ${n.claimed === false ? `<p class="hint">${esc(t('notConfirmed'))} <a class="link" href="${BASE}owner?claim=${encodeURIComponent(n.id)}">${esc(t('claimLink'))}</a></p>` : ''}
     <div class="row-btns">
       <button class="btn" type="button" data-act="alert" aria-pressed="${alerts.has(n.id)}">${esc(alerts.has(n.id) ? t('alertOn') : t('alertMe'))}</button>
     </div>

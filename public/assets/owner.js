@@ -11,6 +11,7 @@ let state = null;           // { user, phoneLogin, contact, profile, nakamals }
 let picker = null, editId = null, adding = false, auth = null, editTab = 'photos', showProfile = false;
 let reg = null;               // registration in progress: { step, data, id }
 let quick = new URLSearchParams(location.search).get('quick') === '1';
+let claimId = new URLSearchParams(location.search).get('claim');
 
 applyStatic();
 langButton(() => { state ? render() : auth && auth.redraw(); paintWho(); });
@@ -29,7 +30,7 @@ function paintWho() {
 }
 
 async function reload() {
-  try { state = await authed('/api/owner'); render(); }
+  try { state = await authed('/api/owner'); try { const c = localStorage.getItem('kl-claimed'); if (c && state.nakamals.some(n => n.name === c)) localStorage.removeItem('kl-claimed'); } catch {} render(); }
   catch (e) { box.innerHTML = `<div class="card"><h3>${esc(t('loadFail'))}</h3><p class="hint">${esc(e.message)}</p><button class="btn" id="retry">${esc(t('tryAgain'))}</button></div>`; $('retry').onclick = reload; }
 }
 async function act(body, okText, msgId) {
@@ -45,13 +46,14 @@ async function act(body, okText, msgId) {
 
 function render() {
   if (picker) { picker.remove(); picker = null; }
+  if (claimId) return renderClaim();
   const mine = state.nakamals;
   if (!mine.length || adding || reg) return renderRegister(mine.length > (reg && reg.id ? 1 : 0));
   if (quick) return renderQuick(mine);
   const ed = editId && mine.find(n => n.id === editId);
   if (ed) return renderEdit(ed);
   editId = null;
-  box.innerHTML = `
+  box.innerHTML = `${claimNote()}
     <div class="ohead"><h3>${esc(t('myNakamals'))}</h3><button class="btn" type="button" id="addBtn">${esc(t('addNakamal'))}</button></div>
     ${mine.map(ownerCard).join('')}
     <details class="card" ${showProfile ? 'open' : ''} id="profBox"><summary><b>${esc(t('myProfile'))}</b></summary>${profileCard()}</details>
@@ -61,6 +63,37 @@ function render() {
   $('profBox').ontoggle = e => { showProfile = e.target.open; };
   wireProfile();
   wireCards(mine);
+}
+
+function claimNote() { let c = null; try { c = localStorage.getItem('kl-claimed'); } catch {} return c ? `<p class="banner">${esc(t('claimPending', { name: c }))}</p>` : ''; }
+// ---------- claim a listing the team added (/owner?claim=<id>) ----------
+async function renderClaim() {
+  const id = claimId;
+  box.innerHTML = `<div class="card"><p class="hint">${esc(t('loading'))}</p></div>`;
+  let n = null;
+  try { n = (await KL.api('/api/nakamals')).items.find(x => x.id === id); } catch {}
+  if (!n) { claimId = null; return render(); }
+  const needContact = !(state.contact && state.contact.owner && state.contact.phone);
+  box.innerHTML = `<div class="card"><h3>${esc(t('claimTitle', { name: n.name }))}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}
+    <p class="hint">${esc(t('claimHint'))}</p>
+    <form class="authform" id="claimForm">
+      ${needContact ? `<div class="row"><label for="cOwner">${esc(t('yourName'))}<input class="field" id="cOwner" maxlength="80" required value="${esc(state.user.name || '')}"></label>
+        <label for="cPhone">${esc(t('phone'))}<input class="field" id="cPhone" type="tel" maxlength="30" required></label></div><p class="hint">${esc(t('ownerPrivate'))}</p>` : ''}
+      <button class="primary" type="submit">${esc(t('claimBtn'))}</button><p class="msg" id="claimMsg"></p></form>
+    <button class="link" type="button" id="claimCancel">${esc(t('cancel'))}</button></div>`;
+  $('claimCancel').onclick = () => { claimId = null; history.replaceState(null, '', location.pathname); render(); };
+  $('claimForm').onsubmit = async e => {
+    e.preventDefault();
+    const body = { action: 'claim', id };
+    if (needContact) body.contact = { owner: clean($('cOwner').value, 80), phone: clean($('cPhone').value, 30) };
+    const r = await act(body, t('claimSent'), 'claimMsg');
+    if (r) {
+      claimId = null; history.replaceState(null, '', location.pathname);
+      if (needContact) state.contact = body.contact;
+      try { localStorage.setItem('kl-claimed', r.claimed); } catch {}
+      render();
+    }
+  };
 }
 
 // ---------- one-tap light page ----------
@@ -213,7 +246,7 @@ function stepsBar(step) {
 function renderRegister(hasOthers) {
   reg ||= { step: 1, data: {}, id: null };
   const needContact = !(state.contact && state.contact.owner && state.contact.phone);
-  const head = `${hasOthers ? `<button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>` : ''}
+  const head = `${claimNote()}${hasOthers ? `<button class="link backmap" type="button" id="backList">${esc(t('allMine'))}</button>` : ''}
     <div class="card"><h3>${esc(hasOthers ? t('regAnother') : t('regTitle'))}</h3>
       <p class="hint">${esc(t('regHint'))}${hasOthers ? esc(t('regHintMore')) : ''}</p>${stepsBar(reg.step)}</div>`;
   const d = reg.data;
