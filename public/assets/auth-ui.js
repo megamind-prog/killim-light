@@ -28,13 +28,23 @@ async function start({ box, allowSignup, title, intro, onUser }) {
     return String((err && err.message) || j.error_description || j.msg || j.error || c.data || '');
   }
 
+  // Google or the login service sent back an error instead of a login (e.g. the email already has a password account).
+  const back = new URLSearchParams((location.hash || '').slice(1) || location.search.slice(1));
+  if (back.get('error')) {
+    const why = (back.get('error_description') || back.get('error') || '').replace(/\+/g, ' ');
+    history.replaceState(null, '', location.pathname + location.search.replace(/[?&](error|error_description)=[^&]*/g, ''));
+    showForm('login', /already|registered|exists/i.test(why) ? t('googleTaken') : t('googleFail', { why }));
+    return ctl;
+  }
+
   // Finish links coming back from email confirmation, password reset or Google.
   try {
     const cb = await A.handleAuthCallback();
     if (cb?.type === 'recovery') { showNewPassword(); return ctl; }
     if (cb?.type === 'confirmation') toast(t('emailConfirmed'));
   } catch (e) {
-    showForm('login', t('linkExpired'));
+    const why = errText(e);
+    showForm('login', /already|registered|exists/i.test(why) ? t('googleTaken') : t('linkExpired'));
     return ctl;
   }
   const user = await A.getUser();

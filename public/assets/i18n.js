@@ -202,6 +202,8 @@ const T = {
   minDrive:       { bi: '{m} min long trak', en: '{m} min by car' },
   modeWalkHint:   { bi: 'Rod we i sot moa.', en: 'The shortest way.' },
   modeDriveHint:  { bi: 'I stap long ol bigfala rod sapos i no longwe moa.', en: 'Keeps to main roads when it adds little distance.' },
+  googleTaken:    { bi: 'Imel ia i gat akaon wetem pasword finis. Login wetem imel mo pasword blong yu.', en: 'This email already has an account with a password. Log in with your email and password instead.' },
+  googleFail:     { bi: 'Login wetem Google i no wok: {why}', en: "Google sign-in didn't work: {why}" },
   routeTo:        { bi: 'Rod i go long {name}', en: 'Way to {name}' },
   routeFinding:   { bi: 'Mi stap faenem wea yu stap…', en: 'Finding where you are…' },
   routeLoc:       { bi: 'Openem location long fon blong yu blong luk rod.', en: 'Turn on your phone\'s location to see the way.' },
