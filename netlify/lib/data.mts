@@ -152,6 +152,20 @@ export const phoneDigits = (v: unknown) => {
 };
 export const phoneLoginEmail = (phone: unknown) => `${phoneDigits(phone)}@${PHONE_LOGIN_DOMAIN}`;
 export const isPhoneLogin = (email?: string) => !!email && email.endsWith("@" + PHONE_LOGIN_DOMAIN);
+// A phone login is only real if our team made it: the mark lives in app_metadata, which users can't change themselves.
+export const PHONE_MARK = { killim_phone: true };
+export const isTeamPhoneLogin = (u: User | null) => !!u && isPhoneLogin(u.email) && (u.appMetadata as any)?.killim_phone === true;
+// Changes must come from our own pages: refuse requests sent from another website.
+export function foreignOrigin(req: Request) {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return false;
+  const o = req.headers.get("origin");
+  if (!o) return false;
+  try {
+    const from = new URL(o).host;
+    const ours = [new URL(req.url).host, req.headers.get("host"), req.headers.get("x-forwarded-host")].filter(Boolean);
+    return !ours.includes(from);
+  } catch { return true; }
+}
 
 // ---------- one-time import of nakamals from the earlier claude.ai version ----------
 export async function ensureSeed() {

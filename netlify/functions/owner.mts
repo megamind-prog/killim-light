@@ -4,7 +4,7 @@
 import type { Config, Context } from "@netlify/functions";
 import {
   avatarUrl, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getStatus, imgStore, isAdmin, isPhoneLogin, json, newId,
-  photoUrl, readAll, rebuildIndex, reportCounts, logEvent, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
+  photoUrl, readAll, rebuildIndex, reportCounts, logEvent, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 import { notifyKavaReady } from "../lib/push.mts";
@@ -29,8 +29,11 @@ async function mine(userId: string) {
 }
 
 export default async (req: Request, context: Context) => {
+  if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
+  // Someone signing up themselves with a phone-login style address is not a real phone login.
+  if (isPhoneLogin(user.email) && !isTeamPhoneLogin(user)) return bad("This login isn't allowed. Ask the Killim Light team for a phone login.", 403);
   const s = store();
   const contact = (await s.get("contact/" + user.id, { type: "json" })) as Contact | null;
   const profileOf = async () => {

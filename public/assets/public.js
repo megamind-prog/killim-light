@@ -144,7 +144,7 @@ function renderList() {
   // Keep a half-typed review when the lights refresh.
   if (box.contains(document.activeElement) && document.activeElement.matches('textarea, input')) { pendingList = true; return; }
   box.innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">${all.length === 0 ? t('noneYet', { owner: BASE + 'owner' })
-      : here.length === 0 ? t('noRegion', { r: islandName(region) }) : filter === 'fav' ? t('noFavs') : t('noMatch')}</div>`;
+      : here.length === 0 ? t('noRegion', { r: esc(islandName(region)) }) : filter === 'fav' ? t('noFavs') : t('noMatch')}</div>`;
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingList && !$('list').contains(document.activeElement)) { pendingList = false; renderList(); } }, 50));
 

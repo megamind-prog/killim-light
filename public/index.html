@@ -2,10 +2,7 @@
 <html lang="bi">
 <head>
 <meta charset="utf-8">
-<script>
-// Links from login emails and Google come back to the home page: finish them on the owner page.
-if (/(^|[#&])(confirmation_token|recovery_token|invite_token|email_change_token|access_token|error)=/.test(location.hash)) { let back = '/owner'; try { back = localStorage.getItem('kl-return') || back; localStorage.removeItem('kl-return'); } catch (e) {} location.replace((/^\/(owner|chief)/.test(back) ? back : '/owner') + location.hash); }
-</script>
+<script src="/assets/boot.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Killim Light · Nakamals Vanuatu</title>
 <meta name="description" content="Live kava lights for nakamals in Vanuatu: see which nakamals have kava ready tonight, prices, ratings and directions.">

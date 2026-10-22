@@ -8,7 +8,7 @@ import { notifyKavaReady } from "../lib/push.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
   avatarUrl, newId, sanitizeDetails, sanitizeKava, sanitizePrices, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getSettings, getStatus, imgStore, isAdmin, isPhoneLogin, json,
-  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, reportCounts, shownLight, store, vuDate,
+  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, foreignOrigin, PHONE_MARK, reportCounts, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 
@@ -49,7 +49,8 @@ async function findUserByEmail(email: string) {
   }
   return null;
 }
-const newPin = () => String(Math.floor(100000 + Math.random() * 900000));
+// 8-digit PINs from a secure random source: 100 million possibilities.
+const newPin = () => String(10000000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000000));
 
 async function allUsers(): Promise<User[]> {
   const out: User[] = [];
@@ -100,6 +101,7 @@ async function unassignNakamal(n: Nakamal) {
 }
 
 export default async (req: Request, context?: Context) => {
+  if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
   if (!isAdmin(user)) return bad("This page is only for the Killim Light team.", 403);
@@ -127,14 +129,14 @@ export default async (req: Request, context?: Context) => {
     const existing = await findUserByEmail(email);
     if (action === "resetPin") {
       if (!existing) return bad("No phone login uses that number yet.", 404);
-      await identityAdmin.updateUser(existing.id, { password: pin });
+      await identityAdmin.updateUser(existing.id, { password: pin, app_metadata: { ...(existing.appMetadata || {}), ...PHONE_MARK } });
       await logEvent(user, "team", "resetPin", { detail: phone });
       return reply({ login: { phone, pin, reset: true } });
     }
     if (existing) return bad("That phone number already has a login. Use Reset PIN instead.");
     const name = clean(body?.name, 80);
     if (name.length < 2) return bad("Enter the owner's name.");
-    const created = await identityAdmin.createUser({ email, password: pin, data: { user_metadata: { full_name: name, phone } } });
+    const created = await identityAdmin.createUser({ email, password: pin, data: { user_metadata: { full_name: name, phone }, app_metadata: { ...PHONE_MARK } } });
     await s.setJSON("contact/" + created.id, { owner: name, phone, at: Date.now() });
     // Optionally hand them an existing nakamal right away.
     const give = clean(body?.id, 60);
@@ -238,7 +240,7 @@ export default async (req: Request, context?: Context) => {
     if (action === "setPassword") {
       if (isPhoneLogin(target.email)) {
         const pin = newPin();
-        await identityAdmin.updateUser(uid, { password: pin });
+        await identityAdmin.updateUser(uid, { password: pin, app_metadata: { ...(target.appMetadata || {}), ...PHONE_MARK } });
         await logEvent(user, "team", "resetPin", { detail: phoneDigits(target.email!.split("@")[0]) });
         return reply({ login: { phone: phoneDigits(target.email!.split("@")[0]), pin, reset: true } });
       }

@@ -4,14 +4,16 @@
 import type { Config } from "@netlify/functions";
 import {
   MAX_PHOTOS, avatarUrl, bad, currentUser, deleteImages, getNak, getStatus, imgStore, json, photoUrl,
-  rebuildIndex, logEvent, store, type Photo, type Profile,
+  rebuildIndex, logEvent, foreignOrigin, isPhoneLogin, isTeamPhoneLogin, store, type Photo, type Profile,
 } from "../lib/data.mts";
 
 const MAX_BYTES = 3 * 1024 * 1024;
 
 export default async (req: Request) => {
+  if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
+  if (isPhoneLogin(user.email) && !isTeamPhoneLogin(user)) return bad("This login isn't allowed.", 403);
   const url = new URL(req.url);
   const kind = url.searchParams.get("kind");
   const buf = new Uint8Array(await req.arrayBuffer());
