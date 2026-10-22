@@ -236,6 +236,7 @@ export async function rebuildIndex() {
       specials: specials.get(n.id) || [],
       schedule: (n as any).schedule?.enabled ? (n as any).schedule.days : null,
       claimed: !!n.owner,
+      lightConfirmed: n.owner ? !!(n as any).ownerUsedLight || n.lightAt != null : n.lightAt != null,
       osm: (n as any).osmId || null,
       host: pr && (pr.name || pr.avatar) ? { name: pr.name || "", avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
       rating: {

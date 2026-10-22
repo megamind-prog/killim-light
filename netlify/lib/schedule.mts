@@ -34,3 +34,7 @@ export function dueEvent(s: Schedule | undefined, now: number, last?: string): {
   const due = cands.filter((c) => c.at <= m && m - c.at <= GRACE_MIN).sort((a, b) => b.at - a.at)[0];
   return due && due.key !== last ? { light: due.light, key: due.key } : null;
 }
+
+// Whether the light schedule may switch this nakamal's light.
+export const scheduleActive = (n: { owner: string | null; lightAt: number | null; ownerUsedLight?: boolean }) =>
+  n.owner ? !!n.ownerUsedLight : n.lightAt != null;

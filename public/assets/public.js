@@ -65,7 +65,7 @@ const paintHint = () => { $('zoomHint').hidden = near() || nakamals.size === 0; 
 
 function popupHtml(n) {
   const l = lightOf(n);
-  return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3>${n.claimed === false && n.schedule ? `<span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span>`
+  return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3>${n.claimed === false && n.schedule && !n.lightConfirmed ? `<span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span>`
     : `<span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
     <div class="line">${esc(updatedLine(n))}</div>`}
     ${n.note ? `<div class="note">${esc(n.note)}</div>` : ''}
@@ -176,7 +176,7 @@ function itemHtml(n) {
       <span class="itext">
         <span class="ititle"><span class="name">${esc(n.name)}</span></span>
         ${where ? `<span class="imeta">${esc(where)}</span>` : ''}
-        ${n.claimed === false && n.schedule ? `<span class="istate"><span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span></span>`
+        ${n.claimed === false && n.schedule && !n.lightConfirmed ? `<span class="istate"><span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span></span>`
           : `<span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>`}
         ${n.note ? `<span class="inote">${esc(n.note)}</span>` : ''}
         ${(n.specials || []).slice(0, filter === 'specials' ? 3 : 1).map(sp => `<span class="ispecial">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${filter === 'specials' && sp.text ? ` · ${esc(sp.text)}` : ''}</span>`).join('')}
