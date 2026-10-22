@@ -46,7 +46,20 @@
         <tr><td><code>lat</code>, <code>lng</code>, <code>zoom</code></td><td>Start the map on one spot, e.g. a hotel</td></tr>
         <tr><td><code>light</code></td><td><code>green</code> to show only nakamals with kava ready</td></tr>
       </table></div>
-      <iframe class="preview" src="/embed?region=efate&amp;lang=en" loading="lazy" title="Example: embedded Killim Light map"></iframe>
+      <h3>Embed builder</h3>
+      <form class="builder" id="builder">
+        <div class="row">
+          <label>Island<select class="field" name="region"><option value="efate">Efate</option><option value="santo">Santo</option><option value="tanna">Tanna</option><option value="all">All Vanuatu</option></select></label>
+          <label>Language<select class="field" name="lang"><option value="en">English</option><option value="bi">Bislama</option></select></label>
+          <label>Height<select class="field" name="height"><option>320</option><option selected>420</option><option>560</option></select></label>
+        </div>
+        <div class="row">
+          <label>Start at (optional)<select class="field" name="spot"><option value="">Whole island</option><option value="-17.7334,168.3200,15">Port Vila town</option><option value="-15.515,167.18,15">Luganville</option><option value="-19.53,169.27,14">Lenakel</option></select></label>
+          <label class="check" style="align-self:end"><input type="checkbox" name="green"> Only nakamals with kava ready</label>
+        </div>
+      </form>
+      <iframe class="preview" id="bPreview" src="/embed?region=efate&amp;lang=en" loading="lazy" title="Preview: embedded Killim Light map"></iframe>
+<pre><code id="bCode"></code></pre>
     </section>
 
     <section class="card">
@@ -57,7 +70,9 @@
         <tr><td><code>GET /api/v1/nakamals</code></td><td>JSON list of every nakamal on the map with its light right now</td></tr>
         <tr><td><code>GET /api/v1/nakamals.geojson</code></td><td>The same as GeoJSON, ready for Leaflet, Mapbox, Google Maps, QGIS or ArcGIS</td></tr>
         <tr><td><code>GET /api/v1/nakamals/&lt;id&gt;</code></td><td>One nakamal</td></tr>
+        <tr><td><code>GET /api/v1/nakamals/&lt;id&gt;/history?days=30</code></td><td>Every light change, day by day (up to 90 days). Good for "usually open on Fridays from 5 pm".</td></tr>
         <tr><td><code>?region=santo</code>, <code>?light=green</code></td><td>Filters you can add to the list and GeoJSON</td></tr>
+        <tr><td><code>x-api-key: kl_…</code> header</td><td>Optional free key: see your usage and add webhooks (section 4)</td></tr>
       </table></div>
       <h3>Example: one nakamal</h3>
 <pre><code>{
@@ -75,6 +90,7 @@
   "prices": [{ "item": "Big shell", "price": "150 VT" }],
   "rating": { "average": 4.6, "count": 12 },
   "photos": ["https://killimlightvanuatu.com/img/photo/salo/p….jpg"],
+  "specials": [{ "kind": "event", "title": "String band night", "text": "Live music", "date": "2026-10-23", "from": "19:00", "to": null }],
   "url": "https://killimlightvanuatu.com/n/salo"
 }</code></pre>
       <p>Use <code>status</code> to colour your pins. <code>stale</code> means the owner hasn't updated the light in 14 hours; <code>reported</code> means several customers said the light is wrong in the last 3 hours.</p>
@@ -98,11 +114,51 @@ fetch('https://killimlightvanuatu.com/api/v1/nakamals.geojson')
 <pre><code>map.data.loadGeoJson('https://killimlightvanuatu.com/api/v1/nakamals.geojson');</code></pre>
     </section>
 
+    <section class="card" id="keys">
+      <h2>4. Free API key and your usage</h2>
+      <p>The API works without a key. Get a free key to see how much your app uses it and to add webhooks. Send it in the <code>x-api-key</code> header.</p>
+      <form class="authform" id="keyForm">
+        <div class="row">
+          <label>Your app or website<input class="field" name="name" maxlength="60" required placeholder="e.g. Vila Tourist Guide"></label>
+          <label>Email for updates<input class="field" name="email" type="email" maxlength="120" required></label></div>
+        <label>What are you building? (optional)<input class="field" name="use" maxlength="200"></label>
+        <div class="row-btns"><button class="btn go" type="submit">Get a free key</button></div>
+        <p class="msg" id="keyMsg"></p>
+      </form>
+      <div id="newKey" hidden></div>
+      <h3>Your dashboard</h3>
+      <form class="prow2" id="meForm"><input class="field" name="key" placeholder="Paste your key (kl_…)" aria-label="API key" autocomplete="off"><button class="btn" type="submit">Show usage</button></form>
+      <div id="dash"></div>
+    </section>
+
+    <section class="card" id="webhooks">
+      <h2>5. Webhooks: be told the moment a light changes</h2>
+      <p>Instead of asking every minute, give us an <code>https://</code> address and we'll <code>POST</code> to it when something happens. Add webhooks from your dashboard above (up to 3 per key).</p>
+      <div class="tablewrap"><table>
+        <tr><th>Event</th><th>When</th></tr>
+        <tr><td><code>light.changed</code></td><td>An owner or our team sets a light (green, amber or closed)</td></tr>
+        <tr><td><code>special.created</code></td><td>A nakamal posts a deal or an event</td></tr>
+      </table></div>
+<pre><code>POST https://your-app.example/killim
+x-killim-event: light.changed
+x-killim-signature: sha256=5d1c…
+
+{ "event": "light.changed", "at": "2026-10-23T06:05:00.000Z",
+  "data": { "previous": "closed",
+            "nakamal": { "id": "salo", "name": "Salo", "status": "green", "lat": -17.72, "lng": 168.33,
+                         "note": "Fresh Tanna kava", "url": "https://killimlightvanuatu.com/n/salo" } } }</code></pre>
+      <h3>Check the signature (Node.js)</h3>
+<pre><code>import crypto from 'node:crypto';
+const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(rawBody).digest('hex');
+if (req.headers['x-killim-signature'] !== expected) return res.status(401).end();</code></pre>
+      <p class="hint">Reply with any 2xx within 5 seconds. After 10 failures in a row a webhook is paused; use “Send test” on your dashboard to check it again.</p>
+    </section>
+
     <section class="card">
       <h2>Versions, limits and uptime</h2>
       <ul>
         <li><b>Version 1</b> lives at <code>/api/v1/</code>. We won't remove or rename fields in v1; new fields may be added, so ignore ones you don't know. Breaking changes would get a new <code>/api/v2/</code>, announced here first.</li>
-        <li><b>Limits</b>: the data refreshes every 30 seconds, so there's no need to ask more than once a minute per user. For server-side jobs, cache the response for at least 30 seconds. If you expect more than 10,000 requests a day, tell us first.</li>
+        <li><b>Limits</b>: the data refreshes every 30 seconds, so there's no need to ask more than once a minute per user. For server-side jobs, cache the response for at least 30 seconds. If you expect more than 10,000 requests a day, tell us first. Each address may make up to 120 requests a minute; past that you get <code>429</code> for a minute.</li>
         <li><b>Errors</b>: an unknown nakamal id returns <code>404</code> with <code>{"error": "Not found"}</code>. Anything else non-200 means try again in a minute.</li>
         <li><b>Times</b> are ISO 8601 in UTC; Vanuatu is UTC+11 all year. <code>closeTime</code> is local Vanuatu time.</li>
       </ul>
@@ -127,5 +183,6 @@ fetch('https://killimlightvanuatu.com/api/v1/nakamals.geojson')
 </main>
 <footer class="sitefoot"><a href="/">Map</a> · <a href="/owner">For owners</a> · <a href="/developers">Developers</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></footer>
 <script src="/assets/docs.js"></script>
+<script src="/assets/devportal.js"></script>
 </body>
 </html>

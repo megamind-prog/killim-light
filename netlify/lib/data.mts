@@ -197,9 +197,23 @@ export function reportCounts(naks: Map<string, Nakamal>, reports: Map<string, Re
 // Rebuilt after every change; the public page and the open API read this one blob.
 export async function rebuildIndex() {
   await ensureSeed();
-  const [naks, statuses, ratings, profiles, reports, settings] = await Promise.all([
+  const [naks, statuses, ratings, profiles, reports, settings, specialsAll] = await Promise.all([
     readAll<Nakamal>("nak/"), readAll<Status>("status/"), readAll<Rating>("rating/"), readAll<Profile>("profile/"), readAll<Report>("report/"), getSettings(),
+    readAll<any>("special/"),
   ]);
+  // Specials and events still to come, per nakamal; ones that ended over two days ago are deleted.
+  const vuNow = new Date(Date.now() + VU_OFFSET_MS).toISOString(), today = vuNow.slice(0, 10), time = vuNow.slice(11, 16);
+  const old = vuDate(Date.now() - 2 * 864e5);
+  const specials = new Map<string, any[]>();
+  for (const [k, sp] of specialsAll) {
+    const [nid] = k.split("/");
+    if (!sp) continue;
+    if (sp.date < old) { await store().delete("special/" + k); continue; }
+    if (sp.date < today || (sp.date === today && sp.to && sp.to < time)) continue;
+    if (!specials.has(nid)) specials.set(nid, []);
+    specials.get(nid)!.push({ id: sp.id, kind: sp.kind, title: sp.title, text: sp.text, date: sp.date, from: sp.from, to: sp.to });
+  }
+  for (const list of specials.values()) list.sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from));
   const byNak = new Map<string, Rating[]>();
   for (const [key, r] of ratings) {
     const [nakId] = key.split("/");
@@ -219,6 +233,7 @@ export async function rebuildIndex() {
       light: n.light, lightAt: n.lightAt, note: n.note,
       reports: rep && rep.count >= REPORT_MIN ? rep : null,
       photos: (n.photos || []).map((p) => ({ url: photoUrl(n.id, p), w: p.w, h: p.h })),
+      specials: specials.get(n.id) || [],
       host: pr && (pr.name || pr.avatar) ? { name: pr.name || "", avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
       rating: {
         avg: +avg.toFixed(2), count: rs.length,

@@ -35,7 +35,7 @@ async function reload() {
 async function act(body, okText, msgId) {
   try {
     const r = await authed('/api/owner', body);
-    if (r.nakamals) state.nakamals = r.nakamals;
+    if (r.nakamals) { const prev = new Map(state.nakamals.map(n => [n.id, n.stats])); state.nakamals = r.nakamals.map(n => ({ ...n, stats: n.stats || prev.get(n.id) })); }
     if (r.profile) state.profile = r.profile;
     if (body.contact) state.contact = { ...(state.contact || {}), ...body.contact };
     if (okText) toast(okText);
@@ -90,8 +90,7 @@ function wireCards(mine) {
     });
     const note = card.querySelector('[data-note]');
     if (note) note.onclick = async () => { if (await act({ action: 'note', id, note: clean(card.querySelector('input').value, 120) }, t('noteSaved'))) render(); };
-    const ed = card.querySelector('[data-edit]');
-    if (ed) ed.onclick = () => { editId = id; editTab = 'photos'; render(); scrollTo({ top: 0 }); };
+    card.querySelectorAll('[data-edit]').forEach(ed => ed.onclick = () => { editId = id; editTab = ed.dataset.edit || 'photos'; render(); scrollTo({ top: 0 }); });
   });
 }
 
@@ -110,7 +109,8 @@ function ownerCard(n) {
     <div class="line">${esc(updatedLine(n))}${n.approved ? ' · ' + esc(t('viewsWeek', { n: n.viewsWeek || 0 })) : ''}</div>
     <div class="prow2"><input class="field" id="note-${esc(n.id)}" maxlength="120" value="${esc(n.note || '')}" placeholder="${esc(t('notePh'))}" aria-label="${esc(t('noteAria'))}">
       <button class="btn" type="button" data-note>${esc(t('saveNote'))}</button></div>
-    <div class="row-btns"><button class="btn" type="button" data-edit>✎ ${esc(t('editPage'))}</button></div>
+    ${(n.specials || []).length ? `<p class="hint">📣 ${n.specials.map(sp => esc(sp.title)).join(' · ')}</p>` : ''}
+    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button></div>
   </div>`;
 }
 
@@ -264,9 +264,11 @@ function renderRegister(hasOthers) {
 
 // ---------- edit one nakamal: four short tabs instead of one long page ----------
 function renderEdit(n) {
-  const tabs = [['photos', t('tabPhotos')], ['kava', t('tabKava')], ['details', t('tabDetails')], ['more', t('tabMore')]];
+  const tabs = [['stats', t('tabStats')], ['specials', t('tabSpecials')], ['photos', t('tabPhotos')], ['kava', t('tabKava')], ['details', t('tabDetails')], ['more', t('tabMore')]];
   let body = '';
   if (editTab === 'photos') body = photosCard(n);
+  if (editTab === 'stats') body = statsCard(n);
+  if (editTab === 'specials') body = specialsCard(n);
   if (editTab === 'kava') body = `<form class="card" id="kavaForm"><h2>${esc(t('kavaDetails'))}</h2>${kavaFields(n)}
       <h2>${esc(t('prices'))}</h2><div id="prows">${priceRows(n.prices)}</div>
       <div class="row-btns"><button class="btn" type="button" id="addPrice">${esc(t('addPrice'))}</button></div>
@@ -289,6 +291,7 @@ function renderEdit(n) {
   box.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { editTab = b.dataset.tab; render(); });
   $('backList').onclick = () => { editId = null; render(); };
   if (editTab === 'photos') wirePhotos(n);
+  if (editTab === 'specials') wireSpecials(n);
   if (editTab === 'kava') {
     wirePrices();
     $('kavaForm').onsubmit = async e => {
@@ -312,6 +315,56 @@ function renderEdit(n) {
     $('delBtn').onclick = () => { $('delYes').hidden = false; };
     $('delYes').onclick = async () => { if (await act({ action: 'remove', id: n.id }, t('removed', { name: n.name }))) { editId = null; render(); } };
   }
+}
+
+// ---------- business stats ----------
+function statsCard(n) {
+  const st = n.stats;
+  if (!st) return `<div class="card"><p class="hint">${esc(t('loading'))}</p></div>`;
+  const tile = (v, l) => `<div class="stat"><b>${esc(String(v))}</b><span>${esc(l)}</span></div>`;
+  const max = Math.max(1, ...st.views), wmax = Math.max(1, ...st.byWeekday), wd = t('wd').split(',');
+  const empty = !st.viewsTotal && !st.nightsOpen && !st.rating.count;
+  return `<div class="stats">${tile(st.viewsTotal, t('statViews'))}${tile(st.followers, t('statFollowers'))}${tile(st.rating.count ? '★ ' + st.rating.avg : '—', t('statRating', { n: st.rating.count }))}${tile(st.nightsOpen, t('statNights'))}</div>
+    ${empty ? `<div class="card"><p class="hint">${esc(t('statNoData'))}</p></div>` : ''}
+    <div class="card"><h2>${esc(t('statViewsDay'))}</h2>
+      <div class="bars" role="img" aria-label="${esc(t('statViewsDay'))}">${st.views.map((v, i) => `<span style="height:${Math.round(v / max * 100)}%" title="${esc(st.days[i])}: ${v}"></span>`).join('')}</div>
+      <div class="barlabels"><span>${esc(st.days[0].slice(5))}</span><span>${esc(st.days[st.days.length - 1].slice(5))}</span></div></div>
+    <div class="card"><h2>${esc(t('statBusiest'))}</h2>
+      <div class="wdays">${st.byWeekday.map((v, i) => `<div><span class="wbar"><i style="height:${Math.round(v / wmax * 100)}%"></i></span><b>${esc(wd[i])}</b><small>${v}</small></div>`).join('')}</div>
+      ${st.usualStart ? `<p class="hint">${esc(t('statUsual', { t: st.usualStart }))}</p>` : ''}</div>
+    <p class="hint">${esc(t('statTip'))}</p>`;
+}
+
+// ---------- specials and events ----------
+function specialsCard(n) {
+  const today = new Date(Date.now() + 11 * 3600e3).toISOString().slice(0, 10);
+  const list = n.specials || [];
+  return `<div class="card"><h2>${esc(t('tabSpecials'))}</h2>
+      ${list.length ? list.map(sp => `<div class="sprow"><div><b>${sp.kind === 'event' ? '🎶' : '🏷️'} ${esc(sp.title)}</b><div class="hint">${esc(sp.date)}${sp.from ? ' · ' + esc(sp.from) : ''}${sp.to ? '–' + esc(sp.to) : ''}${sp.text ? ' · ' + esc(sp.text) : ''}</div></div>
+        <button class="btn danger" type="button" data-unsp="${esc(sp.id)}">${esc(t('spRemove'))}</button></div>`).join('') : `<p class="hint">${esc(t('spNone'))}</p>`}
+    </div>
+    <form class="card authform" id="spForm"><h2>${esc(t('postSpecial'))}</h2>
+      <p class="hint">${esc(t('spHint'))}${n.approved ? '' : ' ' + esc(t('spPending'))}</p>
+      <div class="seg" role="group" aria-label="${esc(t('spKind'))}"><button type="button" data-kind="deal" aria-pressed="true">🏷️ ${esc(t('spDeal'))}</button><button type="button" data-kind="event" aria-pressed="false">🎶 ${esc(t('spEvent'))}</button></div>
+      <label for="spTitle">${esc(t('spTitle'))}<input class="field" id="spTitle" maxlength="60" required placeholder="${esc(t('spTitlePh'))}"></label>
+      <label for="spText">${esc(t('spText'))}<input class="field" id="spText" maxlength="200"></label>
+      <div class="row">
+        <label for="spDate">${esc(t('spDate'))}<input class="field" id="spDate" type="date" value="${today}" min="${today}" required></label>
+        <label for="spFrom">${esc(t('spFrom'))}<input class="field" id="spFrom" type="time"></label>
+        <label for="spTo">${esc(t('spTo'))}<input class="field" id="spTo" type="time"></label></div>
+      <button class="primary" type="submit">${esc(t('spPost'))}</button><p class="msg" id="spMsg"></p></form>`;
+}
+function wireSpecials(n) {
+  let kind = 'deal';
+  box.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { kind = b.dataset.kind; box.querySelectorAll('[data-kind]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+  box.querySelectorAll('[data-unsp]').forEach(b => b.onclick = async () => { if (await act({ action: 'unspecial', id: n.id, specialId: b.dataset.unsp }, t('spRemoved'))) render(); });
+  $('spForm').onsubmit = async e => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+    const r = await act({ action: 'special', id: n.id, kind, title: clean($('spTitle').value, 60), text: clean($('spText').value, 200), date: $('spDate').value, from: $('spFrom').value, to: $('spTo').value }, t('spPosted'), 'spMsg');
+    btn.disabled = false;
+    if (r) render();
+  };
 }
 
 function priceRows(prices) {

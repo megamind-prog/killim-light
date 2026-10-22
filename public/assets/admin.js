@@ -5,7 +5,7 @@ const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, directions, toast, mak
 const { start, authed, signOut } = KLAuthUI;
 const box = $('box');
 const KAVA = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
-let list = [], accounts = [], log = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
+let list = [], accounts = [], log = [], devkeys = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
 let view = 'today', accSearch = '', nakSearch = '', editing = null, picker = null;
 
 start({
@@ -38,7 +38,7 @@ async function act(body, okText) {
   } catch (e) { toast(e.message); return null; }
 }
 
-function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; settings = r.settings || settings; }
+function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; devkeys = r.devkeys || devkeys; settings = r.settings || settings; }
 const wide = () => matchMedia('(min-width: 900px)').matches;
 const day = v => v ? new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
@@ -160,6 +160,13 @@ function toolsHtml() {
       <label class="check" for="setComments"><input type="checkbox" id="setComments" ${settings.comments ? 'checked' : ''}>Show written comments with ratings</label>
       <p class="hint">Off: customers give stars only. On: they can write a short comment, shown publicly. Turn on only when someone can watch for unkind comments.</p></div>
 
+    <div class="card"><h2>Developers using the open data (${devkeys.length})</h2>
+      ${devkeys.length ? devkeys.sort((a, b) => b.week - a.week).map(k => `<div class="sprow"><div><b>${esc(k.name)}</b>${k.revoked ? ' <span class="pill l-closed">switched off</span>' : ''}
+        <div class="hint">${esc(k.email)} · ${k.week} request${k.week === 1 ? '' : 's'} this week · ${k.hooks} webhook${k.hooks === 1 ? '' : 's'}${k.use ? ' · ' + esc(k.use) : ''}</div></div>
+        <button class="btn ${k.revoked ? '' : 'danger'}" type="button" data-key="${esc(k.id)}" data-restore="${k.revoked ? 1 : ''}">${k.revoked ? 'Switch on' : 'Switch off'}</button></div>`).join('')
+        : '<p class="hint">No API keys yet. Developers get one free on the developers page.</p>'}
+      <p class="hint">Switching a key off stops its requests and deletes its webhooks. Apps without a key still work.</p></div>
+
     <div class="card"><h2>Download</h2><p class="hint">One spreadsheet with every nakamal and every account. Opens in Excel or Google Sheets.</p>
       <div class="row-btns"><button class="btn" id="csv" type="button">⬇ Download everything</button></div></div>
 
@@ -186,6 +193,7 @@ function wireTools() {
   $('plForm').onsubmit = e => { e.preventDefault(); act({ action: 'createLogin', name: clean($('plName').value, 80), phone: $('plPhone').value, id: $('plNak').value }, 'Login created'); };
   $('plReset').onclick = () => act({ action: 'resetPin', phone: $('plPhone').value }, 'PIN reset');
   $('csv').onclick = downloadAll;
+  box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => act({ action: 'revokeKey', keyId: b.dataset.key, restore: !!b.dataset.restore }, b.dataset.restore ? 'Key switched on' : 'Key switched off'));
 }
 
 // ---------- Activity log ----------
@@ -197,7 +205,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';
@@ -215,6 +223,7 @@ function rowHtml(n) {
   return `<div class="adm" data-id="${esc(n.id)}">
     <div class="head"><span class="pill l-${l}"><span class="dot">${LIGHT[l].sym}</span>${ok ? 'On map · ' + LIGHT[l].short : v.visited ? 'Visited · ready to approve' : v.date ? 'Visit booked ' + esc(v.date) : 'Waiting for a visit'}</span><b>${esc(n.name)}</b></div>
     <div class="line">${esc(n.area || 'No area given')} · registered ${n.createdAt ? new Date(n.createdAt).toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''}${ok ? ' · ' + esc(updatedLine(n)) + ` · ${n.viewsWeek || 0} view${n.viewsWeek === 1 ? '' : 's'} this week` : ''}</div>
+    ${(n.specials || []).map(sp => `<p class="hint">📣 <b>${esc(sp.title)}</b> · ${esc(sp.date)}${sp.from ? ' ' + esc(sp.from) : ''} <button class="link" type="button" data-a="rmspecial" data-sp="${esc(sp.id)}">Remove</button></p>`).join('')}
     ${n.reports ? `<p class="pendingnote hint">⚠️ ${n.reports.count} customer${n.reports.count === 1 ? '' : 's'} report: ${esc(reportWhat(n.reports))}. <button class="link" data-a="clearrep">Clear reports</button></p>` : ''}
     <div class="contact">
       <span>Owner: <b>${esc((n.contact && n.contact.owner) || 'not given')}</b> · Phone: <b style="user-select:all">${esc((n.contact && n.contact.phone) || 'not given')}</b></span>
@@ -268,6 +277,7 @@ function wireRow(row) {
     if (a === 'unassign') act({ action: 'unassign', id }, 'Owner login removed');
     if (a === 'del') row.querySelector('[data-a=delyes]').hidden = false;
     if (a === 'delyes') act({ action: 'delete', id }, 'Deleted');
+    if (a === 'rmspecial') act({ action: 'removeSpecial', id, specialId: b.dataset.sp }, 'Special removed');
     if (a === 'rmphoto') act({ action: 'removePhoto', id, photoId: b.dataset.photo }, 'Photo removed');
     if (a === 'rmavatar') act({ action: 'removeAvatar', id }, 'Profile picture removed');
     if (a === 'moveone') act({ action: 'assign', id, email: target() }, 'Moved to ' + target());

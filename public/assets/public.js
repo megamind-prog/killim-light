@@ -14,7 +14,19 @@ const favs = new Set(store.get('kl-favs', []));
 let myRatings = store.get('kl-ratings', {});
 const alerts = new Set(store.get('kl-alerts', []));
 const device = deviceId();
-if (filter !== 'all' && filter !== 'green' && filter !== 'fav') filter = 'all';
+if (!['all', 'green', 'fav', 'specials'].includes(filter)) filter = 'all';
+// "More filters": price, kava island, strength, open late.
+const more = { price: '', from: '', str: '', late: false };
+const priceNum = n => { const m = (n.prices || []).map(p => parseInt(String(p.price).replace(/[^\d]/g, ''), 10)).filter(x => x > 0); return m.length ? Math.min(...m) : null; };
+const lateOk = n => !!n.closeTime && (n.closeTime >= '23:00' || n.closeTime < '06:00');
+const moreActive = () => [more.price, more.from, more.str, more.late].filter(Boolean).length;
+const passMore = n => (!more.price || (priceNum(n) != null && priceNum(n) <= +more.price)) && (!more.from || n.kavaFrom === more.from)
+  && (!more.str || n.strength === more.str) && (!more.late || lateOk(n));
+const vuToday = () => new Date(Date.now() + 11 * 3600e3).toISOString().slice(0, 10);
+function spWhen(sp) {
+  const d = sp.date === vuToday() ? t('spToday') : sp.date === new Date(Date.now() + 35 * 3600e3).toISOString().slice(0, 10) ? t('spTomorrow') : sp.date.slice(5);
+  return d + (sp.from ? ' ' + sp.from : '');
+}
 
 // ---------- slide-up panel (phones) ----------
 const sheet = $('sheet'), grab = $('grab');
@@ -127,11 +139,12 @@ function renderList() {
   const all = [...nakamals.values()], here = all.filter(inRegion);
   const items = here.filter(n => {
     const l = lightOf(n), text = ((n.name || '') + ' ' + (n.area || '')).toLowerCase();
-    return (filter === 'all' || filter === l || (filter === 'fav' && favs.has(n.id))) && (!query || text.includes(query));
+    return (filter === 'all' || filter === l || (filter === 'fav' && favs.has(n.id)) || (filter === 'specials' && (n.specials || []).length)) && passMore(n) && (!query || text.includes(query));
   }).sort((A, B) => {
     if (sortBy === 'near' && me) return km(me, A) - km(me, B);
     if (sortBy === 'rating') return B.rating.avg - A.rating.avg || B.rating.count - A.rating.count || A.name.localeCompare(B.name);
     if (sortBy === 'name') return A.name.localeCompare(B.name);
+    if (filter === 'specials') { const a = A.specials[0], b = B.specials[0]; return (a.date + a.from).localeCompare(b.date + b.from); }
     return rank[lightOf(A)] - rank[lightOf(B)] || A.name.localeCompare(B.name);
   });
   const ready = here.filter(n => lightOf(n) === 'green').length;
@@ -144,7 +157,8 @@ function renderList() {
   // Keep a half-typed review when the lights refresh.
   if (box.contains(document.activeElement) && document.activeElement.matches('textarea, input')) { pendingList = true; return; }
   box.innerHTML = items.length ? items.map(itemHtml).join('') : `<div class="empty">${all.length === 0 ? t('noneYet', { owner: BASE + 'owner' })
-      : here.length === 0 ? t('noRegion', { r: esc(islandName(region)) }) : filter === 'fav' ? t('noFavs') : t('noMatch')}</div>`;
+      : here.length === 0 ? t('noRegion', { r: esc(islandName(region)) }) : filter === 'fav' ? t('noFavs') : filter === 'specials' ? t('noSpecials') : t('noMatch')}</div>`;
+  $('moreCount').hidden = !moreActive(); $('moreCount').textContent = moreActive();
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingList && !$('list').contains(document.activeElement)) { pendingList = false; renderList(); } }, 50));
 
@@ -159,6 +173,7 @@ function itemHtml(n) {
         ${where ? `<span class="imeta">${esc(where)}</span>` : ''}
         <span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>
         ${n.note ? `<span class="inote">${esc(n.note)}</span>` : ''}
+        ${(n.specials || []).slice(0, filter === 'specials' ? 3 : 1).map(sp => `<span class="ispecial">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${filter === 'specials' && sp.text ? ` · ${esc(sp.text)}` : ''}</span>`).join('')}
         ${facts.length ? `<span class="ifacts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
       </span>
       ${n.photos && n.photos[0] ? `<img class="thumbimg" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
@@ -178,6 +193,7 @@ function detailsHtml(n, st, ps) {
   return `<div class="details">
     ${n.photos && n.photos.length ? `<div class="gallery" aria-label="Photos">${n.photos.map((p, i) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${i + 1}" loading="lazy"></a>`).join('')}</div>` : ''}
     ${n.host ? `<div class="profile"><div class="avatar">${n.host.avatar ? `<img src="${esc(n.host.avatar)}" alt="">` : '<span aria-hidden="true">👤</span>'}</div><div><h4>${esc(t('host'))}</h4><div class="note">${esc(n.host.name || t('theOwner'))}</div></div></div>` : ''}
+    ${(n.specials || []).length ? `<div><h4>${esc(t('tabSpecials'))}</h4>${n.specials.map(sp => `<div class="spline">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${sp.to ? '–' + esc(sp.to) : ''}${sp.text ? `<div class="hint">${esc(sp.text)}</div>` : ''}</div>`).join('')}</div>` : ''}
     ${n.about ? `<p class="note">${esc(n.about)}</p>` : ''}
     <dl class="facts">
       ${kavaLine(n) ? `<div><dt>${esc(t('kava'))}</dt><dd>${esc(kavaLine(n))}</dd></div>` : ''}
@@ -421,13 +437,56 @@ $('search').addEventListener('input', e => { query = e.target.value.trim().toLow
 $('search').addEventListener('focus', () => { if (phone()) setSheet('open'); });
 $('sort').addEventListener('change', e => { sortBy = e.target.value; if (sortBy === 'near' && !me) findMe(false); else renderList(); });
 
+// ---------- more filters ----------
+const ISL = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
+$('fFrom').insertAdjacentHTML('beforeend', ISL.map(i => `<option>${esc(i)}</option>`).join(''));
+$('moreBtn').onclick = () => { const p = $('morePanel'); p.hidden = !p.hidden; $('moreBtn').setAttribute('aria-expanded', !p.hidden); if (phone() && !p.hidden) setSheet('open'); };
+const readMore = () => { more.price = $('fPrice').value; more.from = $('fFrom').value; more.str = $('fStr').value; more.late = $('fLate').checked; renderList(); };
+['fPrice', 'fFrom', 'fStr', 'fLate'].forEach(id => $(id).addEventListener('change', readMore));
+$('fClear').onclick = () => { $('fPrice').value = $('fFrom').value = $('fStr').value = ''; $('fLate').checked = false; readMore(); };
+
+// ---------- "alert me when kava is ready near me" ----------
+let area = store.get('kl-area', null);          // { km, lat, lng } when switched on
+let areaPicking = false;
+function paintArea() {
+  const b = $('areaBox');
+  if (areaPicking) {
+    b.innerHTML = `<div class="areapick"><b>${esc(t('areaPick'))}</b><div class="seg">${[1, 3, 10].map(k => `<button type="button" data-km="${k}" aria-pressed="false">${k} km</button>`).join('')}</div>
+      <button class="link small" type="button" data-area="cancel">${esc(t('cancel'))}</button><p class="hint">${esc(t('areaNote'))}</p></div>`;
+  } else b.innerHTML = area ? `<div class="areaon">${esc(t('areaOn', { km: area.km }))} <button class="link small" type="button" data-area="off">${esc(t('areaStop'))}</button></div>`
+    : `<button class="arealink" type="button" data-area="on">${esc(t('areaOff'))}</button>`;
+}
+$('areaBox').addEventListener('click', async e => {
+  const k = e.target.closest('[data-km]'), a = e.target.closest('[data-area]');
+  if (a && a.dataset.area === 'on') { areaPicking = true; return paintArea(); }
+  if (a && a.dataset.area === 'cancel') { areaPicking = false; return paintArea(); }
+  if (a && a.dataset.area === 'off') {
+    try { const reg = await navigator.serviceWorker?.getRegistration(); const sub = await reg?.pushManager.getSubscription(); if (sub) await api('/api/push', { action: 'area-unsub', subscription: sub.toJSON() }); } catch {}
+    area = null; store.set('kl-area', null); toast(t('areaStopped')); return paintArea();
+  }
+  if (!k) return;
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || BASE !== '/') { areaPicking = false; paintArea(); return toast(t('alertNeedApp')); }
+  try {
+    const where = await locate();
+    const { key } = await api('/api/push');
+    if (!key) return toast(t('alertUnavailable'));
+    if ((await Notification.requestPermission()) !== 'granted') return toast(t('alertDenied'));
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(key) });
+    const r = await api('/api/push', { action: 'area-sub', subscription: sub.toJSON(), lat: where.lat, lng: where.lng, km: +k.dataset.km, lang: KLi18n.lang });
+    area = { km: r.km, lat: r.lat, lng: r.lng }; store.set('kl-area', area); areaPicking = false;
+    toast(t('areaSet')); paintArea();
+  } catch { toast(t('locDenied')); }
+});
+paintArea();
+
 // ---------- install as an app ----------
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
 $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $('installBtn').hidden = true; };
 
 // ---------- language ----------
-langButton(() => { renderList(); renderMap(); paintBanner(); paintIslands(); setSheet(sheet.dataset.state); });
+langButton(() => { renderList(); renderMap(); paintBanner(); paintIslands(); paintArea(); setSheet(sheet.dataset.state); });
 applyStatic();
 
 // ---------- live data: refresh every 30 seconds; keep the last copy on the phone ----------

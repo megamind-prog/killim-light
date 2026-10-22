@@ -47,12 +47,24 @@
           <button type="button" data-f="all" aria-pressed="true" data-t="f.all">All</button>
           <button type="button" data-f="green" aria-pressed="false" class="l-green"><span class="dot"></span><span data-t="ls.green">Kava ready</span></button>
           <button type="button" data-f="fav" aria-pressed="false" data-t="f.fav">★ Favourites</button>
+          <button type="button" data-f="specials" aria-pressed="false" data-t="f.specials">📣 Specials</button>
         </div>
+        <button class="morebtn" type="button" id="moreBtn" aria-expanded="false" aria-controls="morePanel"><span data-t="moreFilters">Filters</span> <b id="moreCount" hidden></b></button>
         <select class="sortsel" id="sort" aria-label="Sort">
           <option value="status" data-t="sort.status">Open first</option><option value="near" data-t="sort.near">Nearest to me</option>
           <option value="rating" data-t="sort.rating">Top rated</option><option value="name" data-t="sort.name">Name</option></select>
       </div>
     </div>
+    <div class="morepanel" id="morePanel" hidden>
+      <div class="row">
+        <label for="fPrice"><span data-t="fPrice">Shell price up to</span><select class="field" id="fPrice"><option value="" data-t="any">Any</option><option value="100">100 vt</option><option value="150">150 vt</option><option value="200">200 vt</option></select></label>
+        <label for="fFrom"><span data-t="kavaFromLabel">Kava from</span><select class="field" id="fFrom"><option value="" data-t="any">Any</option></select></label>
+        <label for="fStr"><span data-t="strength">Strength</span><select class="field" id="fStr"><option value="" data-t="any">Any</option><option value="mild" data-t="st.mild">Mild</option><option value="medium" data-t="st.medium">Medium</option><option value="strong" data-t="st.strong">Strong</option></select></label>
+      </div>
+      <label class="check" for="fLate"><input type="checkbox" id="fLate"><span data-t="fLate">Open late (after 11 pm)</span></label>
+      <div class="row-btns"><button class="link" type="button" id="fClear" data-t="fClear">Clear filters</button></div>
+    </div>
+    <div class="areabox" id="areaBox"></div>
     <div class="list" id="list" aria-live="polite"><div class="empty" data-t="loading">Loading…</div></div>
     <footer class="foot">
       <p><span data-t="ownerLink">Run a nakamal?</span> <a class="link" href="/owner" data-t="ownerLogin">Owner login</a></p>

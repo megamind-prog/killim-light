@@ -4,7 +4,8 @@
 //                   | assign | unassign | createLogin | resetPin | settings
 //                   | addNakamal | edit | editAccount | setPassword | deleteAccount | lightAll, ... }
 import type { Config, Context } from "@netlify/functions";
-import { notifyKavaReady } from "../lib/push.mts";
+import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
+import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
   avatarUrl, newId, sanitizeDetails, sanitizeKava, sanitizePrices, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getSettings, getStatus, imgStore, isAdmin, isPhoneLogin, json,
@@ -17,6 +18,7 @@ async function overview() {
     readAll<Nakamal>("nak/"), readAll<Status>("status/"), readAll<Contact>("contact/"), readAll<Profile>("profile/"),
     readAll<Report>("report/"), readAll<{ count: number }>("views/"), readAll<{ stars: number }>("rating/"),
   ]);
+  const specials = await readAll<Special>("special/");
   const stars = new Map<string, number[]>();
   for (const [k, r] of ratings) { const nid = k.split("/")[0]; if (r && r.stars) (stars.get(nid) || stars.set(nid, []).get(nid)!).push(r.stars); }
   const reps = reportCounts(naks, reports);
@@ -34,6 +36,7 @@ async function overview() {
       photos: (n.photos || []).map((p) => ({ id: p.id, url: photoUrl(n.id, p) })),
       host: pr ? { name: pr.name, avatar: pr.avatar ? avatarUrl(n.owner!, pr.avatar) : null } : null,
       shown: shownLight(n, rep?.count || 0), reports: rep, viewsWeek,
+      specials: [...specials].filter(([k, v]) => k.startsWith(n.id + "/") && isUpcoming(v)).map(([, v]) => v),
       rating: stars.get(n.id) ? { avg: +(stars.get(n.id)!.reduce((a, b) => a + b, 0) / stars.get(n.id)!.length).toFixed(1), count: stars.get(n.id)!.length } : null,
     };
   }).sort((a, b) => Number(a.status.approved) - Number(b.status.approved) || b.createdAt - a.createdAt);
@@ -89,7 +92,17 @@ async function removeNakamal(id: string) {
   const s = store();
   await deleteImages(`photo/${id}/`);
   await Promise.all([s.delete("nak/" + id), s.delete("status/" + id),
-    deletePrefix(`rating/${id}/`), deletePrefix(`report/${id}/`), deletePrefix(`views/${id}/`), deletePrefix(`push/${id}/`)]);
+    deletePrefix(`rating/${id}/`), deletePrefix(`report/${id}/`), deletePrefix(`views/${id}/`), deletePrefix(`push/${id}/`),
+    deletePrefix(`special/${id}/`), deletePrefix(`history/${id}/`)]);
+}
+// Developers' API keys, for the team's Tools tab: who uses the open data and how much.
+async function devKeys() {
+  const [keys, hooks] = await Promise.all([readAll<ApiKey>("apikey/"), store().list({ prefix: "hook/" })]);
+  return Promise.all([...keys].map(async ([hash, k]) => {
+    const use = await usageOf(hash, 7);
+    return { id: hash.slice(0, 16), name: k.name, email: k.email, use: k.use, createdAt: k.createdAt, revoked: !!k.revoked,
+      week: use.reduce((a, d) => a + d.count, 0), hooks: hooks.blobs.filter((b) => b.key.startsWith(`hook/${hash}/`)).length };
+  }));
 }
 // Take a nakamal off its login, keeping the owner's name and phone with it so the team can still call them.
 async function unassignNakamal(n: Nakamal) {
@@ -106,7 +119,7 @@ export default async (req: Request, context?: Context) => {
   if (!user) return bad("Please log in.", 401);
   if (!isAdmin(user)) return bad("This page is only for the Killim Light team.", 403);
   const s = store();
-  const everything = async () => { const [settings, nakamals, accts, log] = await Promise.all([getSettings(), overview(), accounts(), readLog()]); return { settings, nakamals, accounts: accts, log }; };
+  const everything = async () => { const [settings, nakamals, accts, log, keys] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys()]); return { settings, nakamals, accounts: accts, log, devkeys: keys }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
   if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
 
@@ -204,19 +217,39 @@ export default async (req: Request, context?: Context) => {
     if (!["green", "amber", "closed"].includes(body?.light)) return bad("Choose a light.");
     const [naks, statuses] = await Promise.all([readAll<Nakamal>("nak/"), readAll<Status>("status/")]);
     const onlyLive = body?.scope !== "all";
-    const now = Date.now(), alerts: Nakamal[] = [];
+    const now = Date.now(), changes: [Nakamal, Nakamal][] = [];
     let changed = 0;
     for (const n of naks.values()) {
       const live = !!statuses.get(n.id)?.approved;
       if (onlyLive && !live) continue;
       const next = { ...n, light: body.light, lightAt: now, updatedAt: now };
-      if (live && body.light === "green" && shownLight(n) !== "green") alerts.push(next);
       await s.setJSON("nak/" + n.id, next); changed++;
+      changes.push([n, next]);
     }
     await rebuildIndex();
-    if (alerts.length) { const job = Promise.all(alerts.map(notifyKavaReady)); context?.waitUntil ? context.waitUntil(job) : await job; }
+    const job = Promise.allSettled(changes.map(([a, b]) => afterLightChange(a, b)));
+    context?.waitUntil ? context.waitUntil(job) : await job;
     await logEvent(user, "team", "lightAll", { detail: body.light + " · " + changed + " nakamals" });
     return reply({ changed });
+  }
+
+  // Switch off a developer's API key (their requests stop working; webhooks stop too).
+  if (action === "revokeKey") {
+    const pre = clean(body?.keyId, 16);
+    const keys = await readAll<ApiKey>("apikey/");
+    const hit = [...keys.keys()].find((h) => h.startsWith(pre));
+    if (!pre || !hit) return bad("Unknown key.", 404);
+    await s.setJSON("apikey/" + hit, { ...keys.get(hit)!, revoked: !body?.restore ? true : false });
+    await deletePrefix(`hook/${hit}/`);
+    await logEvent(user, "team", "revokeKey", { detail: keys.get(hit)!.name });
+    return reply();
+  }
+  if (action === "removeSpecial") {
+    const nid = clean(body?.id, 60), sid = clean(body?.specialId, 40);
+    await s.delete(`special/${nid}/${sid}`);
+    await logEvent(user, "team", "removeSpecial", { id: nid, name: (await getNak(nid))?.name });
+    await rebuildIndex();
+    return reply();
   }
 
   // ----- accounts -----
@@ -280,11 +313,9 @@ export default async (req: Request, context?: Context) => {
     if (!["green", "amber", "closed"].includes(body?.light)) return bad("Choose a light.");
     const next = { ...nak, light: body.light, lightAt: Date.now(), updatedAt: Date.now() };
     await s.setJSON("nak/" + id, next);
-    // Same as when the owner does it: phones following this nakamal get a "kava ready" alert.
-    if (st.approved && body.light === "green" && shownLight(nak) !== "green") {
-      await rebuildIndex();
-      const job = notifyKavaReady(next); context?.waitUntil ? context.waitUntil(job) : await job;
-    }
+    // Same as when the owner does it: history, "kava ready" alerts and developers' webhooks.
+    await rebuildIndex();
+    await afterLightChange(nak, next, context?.waitUntil?.bind(context));
   } else if (action === "clearReports") {
     await deletePrefix(`report/${id}/`);
   } else if (action === "removePhoto") {
