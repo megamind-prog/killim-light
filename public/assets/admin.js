@@ -5,7 +5,7 @@ const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, directions, toast, mak
 const { start, authed, signOut } = KLAuthUI;
 const box = $('box');
 const KAVA = ['Pentecost', 'Tanna', 'Malo', 'Santo', 'Ambae', 'Maewo', 'Epi', 'Malekula', 'Efate', 'Other'];
-let list = [], accounts = [], log = [], devkeys = [], osm = [], myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
+let list = [], accounts = [], log = [], devkeys = [], osm = [], social = null, myId = null, settings = { comments: false }, filter = 'all', lastLogin = null, drawer = null;
 let view = 'today', addMode = 'many', bulk = [], bulkPicker = null, accSearch = '', nakSearch = '', editing = null, picker = null;
 
 start({
@@ -38,7 +38,7 @@ async function act(body, okText) {
   } catch (e) { toast(e.message); return null; }
 }
 
-function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; devkeys = r.devkeys || devkeys; osm = r.osm || osm; settings = r.settings || settings; }
+function take(r) { list = r.nakamals || list; accounts = r.accounts || accounts; log = r.log || log; devkeys = r.devkeys || devkeys; osm = r.osm || osm; social = r.social || social; settings = r.settings || settings; }
 const wide = () => matchMedia('(min-width: 900px)').matches;
 const day = v => v ? new Date(v).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
@@ -143,7 +143,9 @@ function drawerHtml() {
 // ---------- Tools & settings ----------
 function toolsHtml() {
   const live = list.filter(n => n.status.approved);
-  return `<div class="card"><h2>Switch every light at once</h2>
+  return `${socialCard()}
+
+    <div class="card"><h2>Switch every light at once</h2>
       <div class="row"><label for="bulkScope">Which nakamals<select class="field" id="bulkScope">
         <option value="live">Only those on the public map (${live.length})</option><option value="all">All, including waiting (${list.length})</option></select></label></div>
       <div class="lights small">${['green', 'amber', 'closed'].map(k => `<button class="light l-${k}" type="button" data-bulk="${k}"><span class="bulb">${LIGHT[k].sym}</span>${LIGHT[k].label}</button>`).join('')}</div>
@@ -185,6 +187,54 @@ function toolsHtml() {
       </ol>
       <p class="hint">This page isn't linked from the public site. Only the emails on the team list can open it.</p></details>`;
 }
+// ---------- Facebook Page: the app posts for itself ----------
+const SOCIAL_KINDS = [
+  ['evening', 'Tonight\'s kava lights', 'every evening'],
+  ['weekly', 'New on Killim Light this week', 'Fridays at 12:00'],
+  ['tip', 'Tip of the week', 'Mondays at 12:00'],
+];
+function socialCard() {
+  if (!social) return '';
+  const cfg = social.settings, on = social.connected;
+  const when = at => new Date(at).toLocaleString('en-GB', { timeZone: 'Pacific/Efate', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return `<div class="card"><h2>Facebook Page: posts itself</h2>
+    <p class="hint">${on ? '<b>✓ Connected.</b> Killim Light posts these on its own, from the live lights. Nothing to do while the team rests.'
+      : '<b>Not connected yet.</b> Until it is, copy each post below and paste it on the Page yourself. Steps to connect are at the bottom of this card.'}</p>
+    <label class="check" for="soEvening"><input type="checkbox" id="soEvening" ${cfg.evening ? 'checked' : ''}><span>Every evening at <input class="field" type="time" id="soAt" value="${esc(cfg.eveningAt)}" style="width:auto;display:inline-block;padding:2px 6px"> : tonight's kava lights and specials (skipped if no light is green)</span></label>
+    <label class="check" for="soWeekly"><input type="checkbox" id="soWeekly" ${cfg.weekly ? 'checked' : ''}><span>Fridays at 12:00: new nakamals and newly claimed ones (skipped if nothing is new)</span></label>
+    <label class="check" for="soTips"><input type="checkbox" id="soTips" ${cfg.tips ? 'checked' : ''}><span>Mondays at 12:00: a tip that invites owners and shows customers a feature (six tips take turns)</span></label>
+    <div class="row-btns"><button class="btn go" type="button" id="soSave">Save times</button></div>
+    ${SOCIAL_KINDS.map(([k, name, w]) => {
+      const text = social.preview[k];
+      return `<details class="sprow" style="display:block"><summary><b>${esc(name)}</b> <span class="hint">· ${esc(w)} · ${text ? 'preview of the next post' : 'nothing to post right now'}</span></summary>
+        ${text ? `<textarea class="field socialprev" rows="13" readonly id="soText-${k}" aria-label="${esc(name)}">${esc(text)}</textarea>
+        <div class="row-btns"><button class="btn" type="button" data-socopy="${k}">Copy text</button>
+          ${on ? `<button class="btn go" type="button" data-sopost="${k}">Post now</button>` : '<a class="btn" href="https://www.facebook.com/" target="_blank" rel="noopener">Open Facebook</a>'}</div>` : ''}</details>`;
+    }).join('')}
+    ${social.posts.length ? `<h3 style="margin-top:14px">Recent posts</h3><div class="socialposts">${social.posts.map(p => `<div class="hint">${p.ok ? '✓' : '⚠'} ${esc(when(p.at))} · ${esc((SOCIAL_KINDS.find(x => x[0] === p.kind) || [, p.kind])[1])} · ${esc(p.by)}
+      ${p.ok && p.id ? ` · <a class="link" href="https://www.facebook.com/${encodeURIComponent(p.id)}" target="_blank" rel="noopener">see post</a>` : ''}${p.error ? ` · <span style="color:var(--red)">${esc(p.error)}</span>` : ''}</div>`).join('')}</div>` : ''}
+    <details style="margin-top:12px"><summary><b>How to connect the Facebook Page</b> (once, about 15 minutes, on a computer)</summary>
+      <ol class="steps" style="max-width:none;margin-top:8px">
+        <li>Make the <b>Killim Light</b> Facebook Page if you haven't yet. You must be its admin.</li>
+        <li>Go to <a class="link" href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> → <b>Create app</b>. Any name, e.g. "Killim Light poster". You don't need to publish the app or send it for review: it only posts to your own Page.</li>
+        <li>Open <a class="link" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener">Graph API Explorer</a>, pick your app, add the permissions <b>pages_manage_posts</b>, <b>pages_read_engagement</b> and <b>pages_show_list</b>, then <b>Generate Access Token</b> and allow your Page.</li>
+        <li>Open the <a class="link" href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank" rel="noopener">Access Token Debugger</a>, paste that token and press <b>Extend Access Token</b>. Copy the long one it gives you.</li>
+        <li>Back in Graph API Explorer, paste the long token and run <code>me/accounts</code>. Find your Page: copy its <b>id</b> and its <b>access_token</b> (this Page token doesn't expire).</li>
+        <li>In Netlify: <b>Project configuration → Environment variables → Add a variable</b>. Add <code>FB_PAGE_ID</code> = the Page id, and <code>FB_PAGE_TOKEN</code> = the Page token (tick <b>Contains secret values</b>). Then <b>Deploys → Trigger deploy</b>.</li>
+        <li>Come back here: the card says <b>Connected</b>. Press <b>Post now</b> on the tip to test.</li>
+      </ol>
+      <p class="hint">Keep the token secret: never paste it in a chat, an email or the code. If it leaks, change your Facebook password and make a new one. If the Page token stops working, the error shows above under Recent posts.</p></details>
+  </div>`;
+}
+function wireSocial() {
+  if (!$('soSave')) return;
+  $('soSave').onclick = () => act({ action: 'socialSettings', evening: $('soEvening').checked, eveningAt: $('soAt').value, weekly: $('soWeekly').checked, tips: $('soTips').checked }, 'Facebook times saved');
+  box.querySelectorAll('[data-socopy]').forEach(b => b.onclick = async () => {
+    const ta = $('soText-' + b.dataset.socopy);
+    try { await navigator.clipboard.writeText(ta.value); toast('Copied: paste it on the Facebook Page'); } catch { ta.select(); }
+  });
+  box.querySelectorAll('[data-sopost]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = 'Posting…'; act({ action: 'socialPost', kind: b.dataset.sopost }, 'Posted to the Facebook Page').then(r => { if (!r) render(); }); });
+}
 function osmCard() {
   const fresh = osm.filter(o => !o.imported && !o.near), done = osm.filter(o => o.imported).length;
   return `<div class="card"><h2>Import nakamals from OpenStreetMap</h2>
@@ -196,6 +246,7 @@ function osmCard() {
     <p class="hint">Map data © OpenStreetMap contributors (ODbL). Names that were just "Kava bar" or "Nakamal" were given their area's name: rename them after a visit.</p></div>`;
 }
 function wireTools() {
+  wireSocial();
   let bulk = null;
   box.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
     bulk = b.dataset.bulk;

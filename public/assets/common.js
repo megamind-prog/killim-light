@@ -139,6 +139,12 @@ async function shareNakamal(n) {
   if (navigator.share) { try { await navigator.share({ title: n.name, text, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   shareSheet(n, url, text);
 }
+// Tonight's lights for the whole map (the Facebook Page posts the same link every evening).
+async function shareTonight() {
+  const url = location.origin + BASE + 'tonight', text = t('shareTonightText');
+  if (navigator.share) { try { await navigator.share({ title: 'Killim Light', text, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  shareSheet({ name: t('tonight') }, url, text);
+}
 function shareSheet(n, url, text) {
   document.querySelector('.sheet')?.remove();
   const el = document.createElement('div'); el.className = 'sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', t('share'));
@@ -289,6 +295,6 @@ function makePicker(el, textEl, start, locBtn) {
 if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
-  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl,
+  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl, shareTonight,
   makeMap, makePicker, pinIcon, REGIONS, osmIndex: OSM_INDEX };
 })();

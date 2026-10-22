@@ -8,10 +8,11 @@ import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
 import { sanitizeSchedule } from "../lib/schedule.mts";
 import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
+import { compose, fbConfigured, getSocial, postNow, recentPosts, sanitizeSocial, type SocialKind } from "../lib/social.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
   avatarUrl, newId, sanitizeDetails, sanitizeKava, sanitizePrices, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getSettings, getStatus, imgStore, isAdmin, isPhoneLogin, json,
-  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, foreignOrigin, PHONE_MARK, reportCounts, shownLight, store, vuDate,
+  phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, whoLabel, foreignOrigin, PHONE_MARK, reportCounts, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
 
@@ -136,7 +137,11 @@ export default async (req: Request, context?: Context) => {
   if (!user) return bad("Please log in.", 401);
   if (!isAdmin(user)) return bad("This page is only for the Killim Light team.", 403);
   const s = store();
-  const everything = async () => { const [settings, nakamals, accts, log, keys] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any) }; };
+  const socialState = async () => {
+    const [cfg, posts, evening, weekly, tip] = await Promise.all([getSocial(), recentPosts(), compose("evening"), compose("weekly"), compose("tip")]);
+    return { settings: cfg, connected: fbConfigured(), posts, preview: { evening, weekly, tip } };
+  };
+  const everything = async () => { const [settings, nakamals, accts, log, keys, social] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys(), socialState()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any), social }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
   if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
 
@@ -144,6 +149,21 @@ export default async (req: Request, context?: Context) => {
   try { body = await req.json(); } catch { return bad("Send JSON."); }
   const action = String(body?.action || "");
 
+  if (action === "socialSettings") {
+    const cfg = sanitizeSocial(body);
+    await s.setJSON("settings/social", cfg);
+    await logEvent(user, "team", "socialSettings", { detail: [cfg.evening && "evening " + cfg.eveningAt, cfg.weekly && "Friday round-up", cfg.tips && "Monday tip"].filter(Boolean).join(", ") || "all off" });
+    return reply();
+  }
+  if (action === "socialPost") {
+    const kind = (["evening", "weekly", "tip"] as const).find((k) => k === body?.kind) as SocialKind | undefined;
+    if (!kind) return bad("Choose which post to send.");
+    if (!fbConfigured()) return bad("Connect the Facebook Page first (see the steps on this card).");
+    const res = await postNow(kind, whoLabel(user));
+    await logEvent(user, "team", "socialPost", { detail: kind + (res.ok ? " posted" : " failed") });
+    if (!res.ok) return bad(res.error || "Facebook didn't accept the post.", 502);
+    return reply();
+  }
   if (action === "settings") {
     await s.setJSON("settings/site", { ...(await getSettings()), comments: !!body?.comments });
     await logEvent(user, "team", "settings", { detail: body?.comments ? "comments on" : "comments off" });
@@ -401,7 +421,7 @@ export default async (req: Request, context?: Context) => {
       const users = await allUsers();
       const target = users.find((u) => u.id === c.userId);
       if (!target) return bad("That login doesn't exist any more.", 404);
-      await s.setJSON("nak/" + id, { ...nak, owner: target.id, ownerEmail: isPhoneLogin(target.email) ? undefined : target.email, updatedAt: Date.now() });
+      await s.setJSON("nak/" + id, { ...nak, owner: target.id, ownerEmail: isPhoneLogin(target.email) ? undefined : target.email, updatedAt: Date.now(), claimedAt: Date.now() });
     }
     const { claim, ...rest } = st as any;
     await s.setJSON("status/" + id, rest);

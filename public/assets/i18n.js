@@ -124,6 +124,11 @@ const T = {
 
   // share
   shareText:      { bi: '{name}: {light} tunaet', en: '{name}: {light} tonight' },
+  shareTonight:   { bi: 'Serem laet blong tunaet', en: "Share tonight's lights" },
+  shareTonightText: { bi: 'Lukim wanem nakamal i gat kava tunaet 🟢', en: 'See which nakamals have kava ready tonight 🟢' },
+  tonight:        { bi: 'Tunaet', en: 'Tonight' },
+  shareMine:      { bi: 'Serem laet blong mi', en: 'Share my light' },
+  shareMineHint:  { bi: 'Postem long Facebook o WhatsApp blong ol kastoma oli save se kava i redi.', en: 'Post it on Facebook or WhatsApp so customers know your kava is ready.' },
   copied:         { bi: 'Link i kopi', en: 'Link copied' },
   copyLink:       { bi: 'Kopi link', en: 'Copy link' },
 

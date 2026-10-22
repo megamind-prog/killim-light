@@ -124,6 +124,8 @@ function wireCards(mine) {
     const note = card.querySelector('[data-note]');
     if (note) note.onclick = async () => { if (await act({ action: 'note', id, note: clean(card.querySelector('input').value, 120) }, t('noteSaved'))) render(); };
     card.querySelectorAll('[data-edit]').forEach(ed => ed.onclick = () => { editId = id; editTab = ed.dataset.edit || 'photos'; render(); scrollTo({ top: 0 }); });
+    const sh = card.querySelector('[data-share]');
+    if (sh) sh.onclick = () => KL.shareNakamal(n);
   });
 }
 
@@ -144,7 +146,7 @@ function ownerCard(n) {
       <button class="btn" type="button" data-note>${esc(t('saveNote'))}</button></div>
     ${n.schedule && n.schedule.enabled ? `<p class="hint">${esc(t('schedNow', { txt: schedText(n.schedule.days) }))}</p>` : ''}
     ${(n.specials || []).length ? `<p class="hint">📣 ${n.specials.map(sp => esc(sp.title)).join(' · ')}</p>` : ''}
-    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="schedule">${esc(t('schedBtn'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button></div>
+    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="schedule">${esc(t('schedBtn'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button>${n.approved ? `<button class="btn" type="button" data-share title="${esc(t('shareMineHint'))}">↗ ${esc(t('shareMine'))}</button>` : ''}</div>
   </div>`;
 }
 

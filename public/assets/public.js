@@ -7,7 +7,7 @@ const { t, BASE, $, esc, clean, LIGHT, lightOf, ago, updatedLine, priceList, sta
 const { applyStatic, langButton } = KLi18n;
 
 let nakamals = new Map(), settings = { comments: false };
-let loaded = false, built = 0, filter = 'all', query = '', sortBy = 'status', selected = null, openId = null, me = null;
+let loaded = false, built = 0, filter = new URLSearchParams(location.search).get('f') || 'all', query = '', sortBy = 'status', selected = null, openId = null, me = null;
 let region = store.get('kl-region', 'efate');            // an island group id from the map index, or 'all'
 let groups = [];                                          // [{ id, name, bbox: [s, w, n, e] }]
 const favs = new Set(store.get('kl-favs', []));
@@ -442,6 +442,8 @@ async function findMe(sort) {
 $('locBtn').onclick = () => findMe(true);
 
 document.querySelectorAll('[data-f]').forEach(c => c.addEventListener('click', () => { filter = c.dataset.f; renderList(); }));
+// Share tonight's lights: the link's preview shows how many nakamals have kava ready right now.
+$('shareTonight').addEventListener('click', () => KL.shareTonight());
 $('search').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); renderList(); });
 $('search').addEventListener('focus', () => { if (phone()) setSheet('open'); });
 $('sort').addEventListener('change', e => { sortBy = e.target.value; if (sortBy === 'near' && !me) findMe(false); else renderList(); });

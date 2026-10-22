@@ -1,8 +1,10 @@
-// Runs every 5 minutes: turns lights green or closed at the times owners scheduled.
+// Runs every 5 minutes: turns lights green or closed at the times owners scheduled,
+// then makes any Facebook Page post that is due.
 import type { Config } from "@netlify/functions";
 import { logEvent, readAll, rebuildIndex, store, type Nakamal } from "../lib/data.mts";
 import { afterLightChange } from "../lib/events.mts";
 import { dueEvent, scheduleActive, type Schedule } from "../lib/schedule.mts";
+import { runSocial } from "../lib/social.mts";
 
 export default async () => {
   const naks = await readAll<Nakamal & { schedule?: Schedule; schedLast?: string }>("nak/");
@@ -23,7 +25,10 @@ export default async () => {
     }
   }
   if (changed) await rebuildIndex();
-  return new Response(JSON.stringify({ changed }), { headers: { "content-type": "application/json" } });
+  // Then the Facebook Page posts that are due (evening lights, Friday round-up, Monday tip).
+  let posted: unknown[] = [];
+  try { posted = await runSocial(now); } catch (e) { console.error("social", e); }
+  return new Response(JSON.stringify({ changed, posted }), { headers: { "content-type": "application/json" } });
 };
 
 export const config: Config = { schedule: "*/5 * * * *" };

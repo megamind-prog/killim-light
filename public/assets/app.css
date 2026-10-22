@@ -526,3 +526,9 @@ details.card > summary::-webkit-details-marker { display: none; }
 .daypick { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .claimbox { background: var(--field); border-radius: 12px; padding: 10px 12px; font-size: .9rem; display: grid; gap: 6px; }
 .osmlist { display: grid; gap: 4px; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+
+/* Share tonight's lights (public map) and "Share my light" (owner home) */
+.sharetonight { justify-self: start; width: auto; margin-top: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 99px; padding: 5px 12px; font: 700 .85rem var(--f-body); cursor: pointer; }
+.sharetonight:hover { border-color: var(--green); }
+.socialprev { width: 100%; min-height: 16em; height: auto; font: .88rem/1.45 var(--f-body); white-space: pre-wrap; }
+.socialposts { display: grid; gap: 6px; margin-top: 8px; }
