@@ -534,3 +534,17 @@ details.card > summary::-webkit-details-marker { display: none; }
 .socialposts { display: grid; gap: 6px; margin-top: 8px; }
 .schedgrid.s4 { grid-template-columns: minmax(70px, auto) auto minmax(0, 1fr) minmax(0, 1fr); }
 .schedgrid.s4 > label.check:nth-child(4n+2) { justify-content: center; }
+
+/* Map layer switcher (our map, streets, satellite) */
+.layerctl { position: relative; }
+.layerbtn { width: 34px; height: 34px; border-radius: 8px; border: 2px solid rgba(0,0,0,.2); background: var(--card); font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
+.layermenu { position: absolute; left: 42px; top: 0; display: grid; min-width: 190px; background: var(--card); color: var(--ink); border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.25); overflow: hidden; }
+.layermenu[hidden] { display: none; }
+.layermenu button { text-align: left; border: 0; background: none; color: inherit; font: 700 .9rem var(--f-body); padding: 10px 14px; cursor: pointer; }
+.layermenu button + button { border-top: 1px solid var(--line); }
+.layermenu button[aria-checked="true"] { background: var(--green-bg); }
+.layermenu button[aria-checked="true"]::before { content: "✓ "; }
+.leaflet-control-attribution { font-size: 10px; max-width: 70vw; }
+/* Place names stay readable on top of satellite pictures */
+.onsat .place span { color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.leaflet-control-attribution:empty { display: none; }

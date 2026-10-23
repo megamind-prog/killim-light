@@ -1,6 +1,6 @@
 // Killim Light offline helper: opens instantly on slow data, shows the last lights when there's no signal,
 // and shows "kava ready" alerts for favourite nakamals.
-const VERSION = 'kl-v12';
+const VERSION = 'kl-v13';
 const SHELL = ['/', '/owner', '/assets/app.css', '/assets/i18n.js', '/assets/common.js', '/assets/route.js', '/assets/public.js', '/assets/owner.js',
   '/assets/auth.js', '/assets/auth-ui.js', '/assets/leaflet/leaflet.js', '/assets/leaflet/leaflet.css', '/assets/icon.svg',
   '/assets/icon-192.png', '/assets/osm/index.json', '/assets/osm/efate.json', '/assets/osm/route-efate.json', '/assets/vanuatu-land.json', '/assets/portvila-osm.jpg', '/manifest.webmanifest'];

@@ -225,9 +225,25 @@ async function uploadImage(kind, id, file) {
 // ---------- map ----------
 const pinIcon = (l, sel) => L.divIcon({ className: `pin l-${l} ${sel ? 'sel' : ''}`, html: `<div>${SYM[l] || ''}</div>`, iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -14] });
 
+// ---------- map layers: our own map, detailed streets, satellite (with or without labels) ----------
+// Satellite: sharp Esri pictures when the team has added an Esri key (ESRI_API_KEY on Netlify), otherwise free
+// Sentinel-2 cloudless pictures from EOX (fine for towns and roads, blurry for single buildings).
+let MAP_CFG = null;
+const mapConfig = () => (MAP_CFG ||= fetch(BASE + 'api/mapconfig').then(r => r.ok ? r.json() : {}).catch(() => ({})));
+const BASES = ['killim', 'streets', 'sat', 'satlabels'];
+function tileFor(kind, cfg) {
+  if (kind === 'streets') return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, maxNativeZoom: 19,
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' });
+  if (cfg && cfg.esriKey) return L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=' + encodeURIComponent(cfg.esriKey), { maxZoom: 19, maxNativeZoom: 18,
+    attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> · Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community' });
+  return L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom: 19, maxNativeZoom: 15,
+    attribution: '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2023)' });
+}
+
 function makeMap(el, opts = {}) {
   const start = opts.region && REGIONS[opts.region] ? REGIONS[opts.region].bounds : REGIONS.efate.bounds;
   delete opts.region;
+  const layersOpt = opts.layers; delete opts.layers;
   const m = L.map(el, { maxBounds: L.latLngBounds(VANUATU_BOUNDS).pad(0.15), maxBoundsViscosity: 0.8, minZoom: 6, maxZoom: 18, zoomSnap: 0.25, attributionControl: false, preferCanvas: true, ...opts });
   el.style.background = '#aad3df';
   const rnd = L.canvas({ padding: 0.3 });
@@ -236,14 +252,18 @@ function makeMap(el, opts = {}) {
     icon: L.divIcon({ className: 'place ' + k, html: `<span>${name}</span>`, iconSize: [0, 0] }) })));
   const groups = [];     // loaded island groups: { layers, places }
   const asked = new Set();
+  const fills = [];      // land and lake shapes: hidden when pictures (streets or satellite) are shown underneath
+  let base = 'killim', tiles = null;
+  const showFills = () => base === 'killim';
+  const keep = l => { fills.push(l); if (showFills()) l.addTo(m); return l; };
   // The whole country: OpenStreetMap coastline, simplified.
-  LAND_DATA().then(d => { if (d && document.body.contains(el)) L.polygon(d, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }).addTo(m).bringToBack(); });
+  LAND_DATA().then(d => { if (d && document.body.contains(el)) { const l = keep(L.polygon(d, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 })); showFills() && l.bringToBack(); } });
   const lab = (d, cls) => L.layerGroup(d.places.filter(p => cls.includes(p[0])).map(([kind, name, lat, lng]) =>
     L.marker([lat, lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'place ' + kind, html: `<span>${esc(name)}</span>`, iconSize: [0, 0] }) })));
   function addGroup(d) {
     if (!d || !document.body.contains(el)) return;
-    L.polygon(d.land, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }).addTo(m);
-    if (d.lines.lake) L.polygon(d.lines.lake, { renderer: rnd, interactive: false, stroke: false, fillColor: '#aad3df', fillOpacity: 1 }).addTo(m);
+    keep(L.polygon(d.land, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }));
+    if (d.lines.lake) keep(L.polygon(d.lines.lake, { renderer: rnd, interactive: false, stroke: false, fillColor: '#aad3df', fillOpacity: 1 }));
     const layers = ROAD_ORDER.filter(k => d.lines[k]).map(k => {
       const st = ROAD[k];
       const casing = st.k ? L.polyline(d.lines[k], { renderer: rnd, interactive: false, color: st.k, lineCap: 'round', lineJoin: 'round' }) : null;
@@ -269,22 +289,59 @@ function makeMap(el, opts = {}) {
     if (!document.body.contains(el)) return;
     const z = m.getZoom();
     const all = groups.flatMap(g => g.layers);
+    // Detailed streets bring their own roads and names; satellite alone shows just the pictures.
+    const roads = base === 'killim' || base === 'satlabels', names = roads;
     ROAD_ORDER.forEach(k => all.filter(l => l.k === k).forEach(({ st, casing, fill }) => {
       const w = wAt(st, z);
-      if (z < st.min || w <= 0) { casing && m.removeLayer(casing); m.removeLayer(fill); return; }
+      if (!roads || z < st.min || w <= 0) { casing && m.removeLayer(casing); m.removeLayer(fill); return; }
       if (casing) { casing.setStyle({ weight: w + (z >= 14 ? 2 : 1) }); if (!m.hasLayer(casing)) casing.addTo(m); }
       fill.setStyle({ weight: w }); if (!m.hasLayer(fill)) fill.addTo(m);
     }));
     // Road fills always sit above every casing, so junctions look clean.
     ROAD_ORDER.forEach(k => all.filter(l => l.k === k).forEach(l => m.hasLayer(l.fill) && l.fill.bringToFront()));
-    groups.forEach(g => g.places.forEach(([pg, lo, hi]) => (z >= lo && z < hi ? pg.addTo(m) : m.removeLayer(pg))));
-    z >= 15 ? town.addTo(m) : m.removeLayer(town);
-    z < 11.5 ? islandLabels.addTo(m) : m.removeLayer(islandLabels);
+    groups.forEach(g => g.places.forEach(([pg, lo, hi]) => (names && z >= lo && z < hi ? pg.addTo(m) : m.removeLayer(pg))));
+    base === 'killim' && z >= 15 ? town.addTo(m) : m.removeLayer(town);
+    base !== 'streets' && z < 11.5 ? islandLabels.addTo(m) : m.removeLayer(islandLabels);
+    el.classList.toggle('onsat', base === 'sat' || base === 'satlabels');
     // Island names for the whole country only make sense zoomed right out.
     islandLabels.eachLayer(mk => { const el2 = mk.getElement && mk.getElement(); if (el2) el2.style.display = (z < 8.5 && !/big|town/.test(el2.className)) ? 'none' : ''; });
   }
   m.on('moveend', load);
   m.on('zoomend', sync);
+  // Switch between our map, detailed streets and satellite. The choice is remembered on this phone.
+  const attrib = L.control.attribution({ prefix: false });
+  m.setBase = async kind => {
+    if (!BASES.includes(kind)) kind = 'killim';
+    base = kind;
+    if (tiles) { m.removeLayer(tiles); tiles = null; }
+    if (kind !== 'killim') {
+      const t2 = tileFor(kind === 'satlabels' ? 'sat' : kind, kind === 'streets' ? null : await mapConfig());
+      if (base !== kind) return;                       // changed again while waiting
+      if (!attrib._map) attrib.addTo(m);               // before the pictures, so their credit leaves with them
+      tiles = t2.addTo(m);
+    }
+    fills.slice().reverse().forEach(l => (showFills() ? (l.addTo(m), l.bringToBack()) : m.removeLayer(l)));
+    sync();
+    m.fire('basechange', { base: kind });
+  };
+  m.getBase = () => base;
+  if (layersOpt !== false) {
+    const Ctl = L.Control.extend({ options: { position: 'topleft' }, onAdd() {
+      const box = L.DomUtil.create('div', 'layerctl');
+      box.innerHTML = `<button type="button" class="layerbtn" aria-expanded="false" aria-label="${esc(t('mapLayers'))}" title="${esc(t('mapLayers'))}">🗺️</button>
+        <div class="layermenu" role="menu" hidden>${BASES.map(k => `<button type="button" role="menuitemradio" data-base="${k}">${esc(t('layer.' + k))}</button>`).join('')}</div>`;
+      L.DomEvent.disableClickPropagation(box); L.DomEvent.disableScrollPropagation(box);
+      const btn = box.querySelector('.layerbtn'), menu = box.querySelector('.layermenu');
+      const mark = () => menu.querySelectorAll('[data-base]').forEach(b => b.setAttribute('aria-checked', b.dataset.base === base));
+      btn.onclick = () => { menu.hidden = !menu.hidden; btn.setAttribute('aria-expanded', !menu.hidden); mark(); };
+      menu.onclick = e => { const b = e.target.closest('[data-base]'); if (!b) return; store.set('kl-base', b.dataset.base); m.setBase(b.dataset.base); menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      m.on('basechange', mark);
+      return box;
+    } });
+    new Ctl().addTo(m);
+  }
+  const saved = layersOpt === false ? 'killim' : store.get('kl-base', 'killim');
+  if (saved !== 'killim') m.setBase(saved);
   m.fitBounds(start);
   m.showRegion = r => m.flyToBounds((REGIONS[r] || REGIONS.efate).bounds, { duration: .8 });
   // Fly to one island group from the OpenStreetMap index (bbox = [south, west, north, east]), or the whole country.

@@ -124,6 +124,11 @@ const T = {
 
   // share
   shareText:      { bi: '{name}: {light} tunaet', en: '{name}: {light} tonight' },
+  mapLayers:      { bi: 'Jenisim map', en: 'Map layers' },
+  'layer.killim': { bi: 'Map blong Killim', en: 'Killim map' },
+  'layer.streets':{ bi: 'Ol rod (moa detel)', en: 'Streets (detailed)' },
+  'layer.sat':    { bi: 'Foto blong satelaet', en: 'Satellite' },
+  'layer.satlabels': { bi: 'Satelaet + nem', en: 'Satellite + labels' },
   shareTonight:   { bi: 'Serem laet blong tunaet', en: "Share tonight's lights" },
   shareTonightText: { bi: 'Lukim wanem nakamal i gat kava tunaet 🟢', en: 'See which nakamals have kava ready tonight 🟢' },
   tonight:        { bi: 'Tunaet', en: 'Tonight' },
