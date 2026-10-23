@@ -501,7 +501,7 @@ $('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prom
 langButton(() => { renderList(); renderMap(); paintBanner(); paintIslands(); paintArea(); setSheet(sheet.dataset.state); });
 applyStatic();
 
-// ---------- live data: refresh every 30 seconds; keep the last copy on the phone ----------
+// ---------- live data: refresh every minute; keep the last copy on the phone ----------
 let offline = false;
 function paintBanner() {
   const b = $('offlineBanner');
@@ -539,7 +539,7 @@ if (new URLSearchParams(location.search).get('near') === '1') findMe(true);
 setSheet('peek');
 renderMap(); renderList();
 load();
-setInterval(() => { if (!document.hidden) load(); else renderList(); }, 30000);
+setInterval(() => { if (!document.hidden) load(); else renderList(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 // Leaflet needs to know when its box changes size (rotating a phone, resizing a window).
 addEventListener('resize', () => map.invalidateSize());

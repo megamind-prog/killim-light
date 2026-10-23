@@ -1,4 +1,4 @@
-// Runs every 5 minutes: turns lights green or closed at the times owners scheduled,
+// Runs every 10 minutes: turns lights green or closed at the times owners scheduled,
 // then makes any Facebook Page post that is due.
 import type { Config } from "@netlify/functions";
 import { logEvent, readAll, rebuildIndex, store, type Nakamal } from "../lib/data.mts";
@@ -38,4 +38,5 @@ export default async () => {
   return new Response(JSON.stringify({ changed, posted }), { headers: { "content-type": "application/json" } });
 };
 
-export const config: Config = { schedule: "*/5 * * * *" };
+// Every 10 minutes: lights change on time within a few minutes, at half the cost of every 5.
+export const config: Config = { schedule: "*/10 * * * *" };

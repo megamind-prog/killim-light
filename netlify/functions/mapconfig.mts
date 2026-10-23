@@ -4,7 +4,7 @@ import type { Config } from "@netlify/functions";
 
 export default async () =>
   new Response(JSON.stringify({ esriKey: process.env.ESRI_API_KEY || null }), {
-    headers: { "content-type": "application/json", "cache-control": "public, max-age=600" },
+    headers: { "content-type": "application/json", "cache-control": "public, max-age=600", "netlify-cdn-cache-control": "public, s-maxage=600" },
   });
 
 export const config: Config = { path: "/api/mapconfig", method: ["GET"] };

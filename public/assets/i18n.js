@@ -9,7 +9,7 @@ const T = {
   loading:        { bi: 'I stap lodem…', en: 'Loading…' },
   countReady:     { bi: '{a} i gat kava long {b}', en: '{a} with kava of {b}' },
   offline:        { bi: 'No gat netwok. Laet ia hemi blong {ago}.', en: 'No connection. These lights are from {ago}.' },
-  offlineNone:    { bi: 'Mi no save lodem ol nakamal naoia. Jekem netwok blong yu; bae hemi traem bakegen evri 30 seken.', en: "Can't load the nakamals right now. Check your connection; the page retries every 30 seconds." },
+  offlineNone:    { bi: 'Mi no save lodem ol nakamal naoia. Jekem netwok blong yu; bae hemi traem bakegen evri minit.', en: "Can't load the nakamals right now. Check your connection; the page retries every minute." },
   back:           { bi: '← Go bak', en: '← Back' },
   backMap:        { bi: '← Go bak long map', en: '← Back to the map' },
   logout:         { bi: 'Logaot', en: 'Log out' },

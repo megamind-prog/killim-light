@@ -25,7 +25,7 @@ export default async (req: Request) => {
 <meta name="twitter:card" content="summary_large_image">
 <meta http-equiv="refresh" content="0; url=${target}">
 </head><body><p><a href="${target}">${esc(title)}</a></p></body></html>`;
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=120" } });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=120", "netlify-cdn-cache-control": "public, s-maxage=120" } });
 };
 
 export const config: Config = { path: "/tonight", method: ["GET"] };

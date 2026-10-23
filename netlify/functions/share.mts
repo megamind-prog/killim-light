@@ -27,7 +27,7 @@ export default async (req: Request, context: Context) => {
 <meta http-equiv="refresh" content="0; url=${esc(target)}">
 </head><body><p><a href="${esc(target)}">${esc(title)}</a></p><script>location.replace(${JSON.stringify(target)})</script></body></html>`;
   // Short cache so the preview shows a fairly fresh light.
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=120" } });
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=120", "netlify-cdn-cache-control": "public, s-maxage=120" } });
 };
 
 export const config: Config = { path: "/n/*", method: ["GET"] };
