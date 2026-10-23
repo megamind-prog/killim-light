@@ -234,7 +234,7 @@ const BASES = ['killim', 'streets', 'sat', 'satlabels'];
 function tileFor(kind, cfg) {
   if (kind === 'streets') return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, maxNativeZoom: 19,
     attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' });
-  if (cfg && cfg.esriKey) return L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=' + encodeURIComponent(cfg.esriKey), { maxZoom: 19, maxNativeZoom: 18,
+  if (cfg && cfg.esriKey && !cfg.esriFailed) return L.tileLayer('https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=' + encodeURIComponent(cfg.esriKey), { maxZoom: 19, maxNativeZoom: 18,
     attribution: 'Powered by <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> · Imagery: Esri, Maxar, Earthstar Geographics, and the GIS User Community' });
   return L.tileLayer('https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg', { maxZoom: 19, maxNativeZoom: 15,
     attribution: '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2023)' });
@@ -319,6 +319,17 @@ function makeMap(el, opts = {}) {
       if (base !== kind) return;                       // changed again while waiting
       if (!attrib._map) attrib.addTo(m);               // before the pictures, so their credit leaves with them
       tiles = t2.addTo(m);
+      // If Esri stops answering (key expired, monthly allowance used up), switch to the free EOX pictures
+      // instead of showing grey squares. Remembered until the page is reloaded.
+      if (kind !== 'streets' && /arcgis/.test(t2._url)) {
+        let ok = 0, bad = 0;
+        t2.on('tileload', () => { ok++; });
+        t2.on('tileerror', async () => {
+          if (++bad < 3 || ok > bad || tiles !== t2) return;
+          const cfg = await mapConfig(); cfg.esriFailed = true;
+          if (tiles === t2) m.setBase(base);
+        });
+      }
     }
     fills.slice().reverse().forEach(l => (showFills() ? (l.addTo(m), l.bringToBack()) : m.removeLayer(l)));
     sync();
