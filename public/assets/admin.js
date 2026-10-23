@@ -177,6 +177,8 @@ function toolsHtml() {
         : '<p class="hint">No API keys yet. Developers get one free on the developers page.</p>'}
       <p class="hint">Switching a key off stops its requests and deletes its webhooks. Apps without a key still work.</p></div>
 
+    ${freshCard()}
+
     <div class="card"><h2>Download</h2><p class="hint">One spreadsheet with every nakamal and every account. Opens in Excel or Google Sheets.</p>
       <div class="row-btns"><button class="btn" id="csv" type="button">⬇ Download everything</button></div></div>
 
@@ -200,6 +202,15 @@ function idleCard() {
       <div class="row"><label>Green from<input class="field" type="time" id="idleOn" value="17:00"></label><label>Close at<input class="field" type="time" id="idleOff" value="21:00"></label></div>
       <div class="row-btns"><button class="btn go" type="button" id="idleGo">Schedule all ${idle.length}</button></div>`
       : '<p class="hint">Every nakamal on the map is kept up to date by its owner or a light schedule.</p>'}</div>`;
+}
+
+// ---------- start fresh before launch: delete all owner accounts ----------
+function freshCard() {
+  const owners = accounts.filter(a => !a.team && a.id !== myId), claimed = list.filter(n => n.owner);
+  return `<div class="card"><h2>Start fresh: remove all owner accounts</h2>
+    <p class="hint">For before launch, to clear test logins. Deletes <b>${owners.length}</b> owner account${owners.length === 1 ? '' : 's'}${owners.length ? ' (' + owners.slice(0, 8).map(a => esc(a.email || '☎ ' + a.phone)).join(', ') + (owners.length > 8 ? '…' : '') + ')' : ''} and makes all <b>${claimed.length}</b> claimed nakamal${claimed.length === 1 ? '' : 's'} unclaimed again. Team accounts are kept. Nakamals stay on the map with their details, photos, lights and schedules. <b>This can't be undone.</b></p>
+    ${owners.length || claimed.length ? `<div class="prow2"><input class="field" id="freshConfirm" placeholder="Type DELETE to confirm" autocomplete="off" aria-label="Type DELETE to confirm">
+      <button class="btn danger" type="button" id="freshGo" disabled>Delete owner accounts</button></div>` : '<p class="hint">Nothing to remove: there are no owner accounts and no claimed nakamals.</p>'}</div>`;
 }
 
 // ---------- Facebook Page: the app posts for itself ----------
@@ -262,6 +273,10 @@ function osmCard() {
 }
 function wireTools() {
   wireSocial();
+  if ($('freshGo')) {
+    $('freshConfirm').oninput = () => { $('freshGo').disabled = $('freshConfirm').value.trim() !== 'DELETE'; };
+    $('freshGo').onclick = () => { $('freshGo').disabled = true; act({ action: 'deleteAllOwners', confirm: 'DELETE' }, 'Owner accounts deleted; every nakamal is unclaimed').then(r => { if (!r) render(); }); };
+  }
   if ($('idleGo')) $('idleGo').onclick = () => { $('idleGo').disabled = true; act({ action: 'scheduleIdle', on: $('idleOn').value, off: $('idleOff').value }, `Scheduled every day ${$('idleOn').value}–${$('idleOff').value}`).then(r => { if (!r) render(); }); };
   let bulk = null;
   box.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
@@ -296,7 +311,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, scheduleIdle: e => `scheduled ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, scheduleIdle: e => `scheduled ${e.detail}`, deleteAllOwners: e => `started fresh: ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';

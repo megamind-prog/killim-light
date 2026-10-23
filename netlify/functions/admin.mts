@@ -355,6 +355,31 @@ export default async (req: Request, context?: Context) => {
   }
 
   // ----- accounts -----
+  // Start fresh before launch: delete every owner account (team accounts are kept) and make every nakamal
+  // unclaimed again. Nakamals stay on the map with their details, lights and schedules.
+  if (action === "deleteAllOwners") {
+    if (body?.confirm !== "DELETE") return bad("Type DELETE to confirm.");
+    const users = (await allUsers()).filter((u) => !isAdmin(u) && u.id !== user.id);
+    const naks = [...(await readAll<Nakamal>("nak/")).values()];
+    let freed = 0;
+    for (const n of naks) {
+      const st = await getStatus(n.id);
+      if (n.owner) {
+        await s.setJSON("nak/" + n.id, { ...n, owner: null, ownerEmail: undefined, ownerUsedLight: false, claimedAt: undefined, updatedAt: Date.now() });
+        freed++;
+      }
+      // Pending "this is mine" requests go too. Contact details the team typed for a listing are kept.
+      if ((st as any).claim) { const { claim: _c, ...rest } = st as any; await s.setJSON("status/" + n.id, rest); }
+    }
+    for (const u of users) {
+      await deleteImages(`avatar/${u.id}/`);
+      await Promise.all([s.delete("contact/" + u.id), s.delete("profile/" + u.id)]);
+      await identityAdmin.deleteUser(u.id);
+    }
+    await logEvent(user, "team", "deleteAllOwners", { detail: `${users.length} owner account${users.length === 1 ? "" : "s"} deleted, ${freed} nakamal${freed === 1 ? "" : "s"} unclaimed` });
+    await rebuildIndex();
+    return reply({ deletedAccounts: users.length, unclaimed: freed });
+  }
   if (action === "editAccount" || action === "setPassword" || action === "deleteAccount") {
     const uid = clean(body?.userId, 80);
     const users = await allUsers();
