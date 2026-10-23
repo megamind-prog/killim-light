@@ -82,6 +82,7 @@ function todayHtml() {
     ${clear ? `<div class="card allclear"><h3>All clear ✓</h3><p class="hint">No registrations waiting and no reported lights.</p></div>` : ''}
     ${pending.length ? `<div class="card"><h2>Waiting for a visit (${pending.length})</h2>${pending.map(listRow).join('')}</div>` : ''}
     ${reported.length ? `<div class="card"><h2>Reported by customers (${reported.length})</h2>${reported.map(listRow).join('')}</div>` : ''}
+    ${list.filter(notUpdated).length ? `<div class="card"><h2>Not being updated (${list.filter(notUpdated).length})</h2><p class="hint">Nobody set these lights in the last day and no schedule runs for them, so customers see grey.</p><div class="row-btns"><button class="btn" type="button" data-view="tools">Give them daily times →</button></div></div>` : ''}
     ${claims.length ? `<div class="card"><h2>Owners claiming a listing (${claims.length})</h2>${claims.map(listRow).join('')}<p class="hint">Call them to check they really run it, then open it and tap “Give it to them”.</p></div>` : ''}
     ${idle.length ? `<div class="card"><h2>Accounts with no nakamal yet (${idle.length})</h2>
       ${idle.slice(0, 8).map(a => `<div class="lrow"><div class="lmain"><b>${esc((a.contact && a.contact.owner) || a.name || a.email || a.phone)}</b><span class="hint">${esc(a.email || '☎ ' + a.phone)} · joined ${day(a.createdAt)}</span></div><button class="btn" type="button" data-go-acc="${esc(a.email || a.phone || '')}">Open</button></div>`).join('')}
@@ -144,6 +145,7 @@ function drawerHtml() {
 function toolsHtml() {
   const live = list.filter(n => n.status.approved);
   return `${socialCard()}
+    ${idleCard()}
 
     <div class="card"><h2>Switch every light at once</h2>
       <div class="row"><label for="bulkScope">Which nakamals<select class="field" id="bulkScope">
@@ -187,6 +189,19 @@ function toolsHtml() {
       </ol>
       <p class="hint">This page isn't linked from the public site. Only the emails on the team list can open it.</p></details>`;
 }
+// ---------- nakamals nobody keeps up to date: give them daily light times ----------
+const schedRuns = n => !!n.schedConfirmed || (n.owner ? !!n.ownerUsedLight : n.lightAt != null);
+const notUpdated = n => n.status.approved && !(n.schedule && n.schedule.enabled && schedRuns(n)) && (n.lightAt == null || Date.now() - n.lightAt > 864e5);
+function idleCard() {
+  const idle = list.filter(notUpdated);
+  return `<div class="card"><h2>Nakamals not being updated (${idle.length})</h2>
+    ${idle.length ? `<p class="hint">These are on the map, but nobody has set their light in the last day and no light schedule runs for them, so customers see grey. Give them all the same daily times: the light turns green and closes by itself. Owners can still change their light or schedule afterwards.</p>
+      <p class="hint">${idle.map(n => `<b>${esc(n.name)}</b>${n.area ? ' (' + esc(n.area) + ')' : ''}`).join(' · ')}</p>
+      <div class="row"><label>Green from<input class="field" type="time" id="idleOn" value="17:00"></label><label>Close at<input class="field" type="time" id="idleOff" value="21:00"></label></div>
+      <div class="row-btns"><button class="btn go" type="button" id="idleGo">Schedule all ${idle.length}</button></div>`
+      : '<p class="hint">Every nakamal on the map is kept up to date by its owner or a light schedule.</p>'}</div>`;
+}
+
 // ---------- Facebook Page: the app posts for itself ----------
 const SOCIAL_KINDS = [
   ['evening', 'Tonight\'s kava lights', 'every evening'],
@@ -247,6 +262,7 @@ function osmCard() {
 }
 function wireTools() {
   wireSocial();
+  if ($('idleGo')) $('idleGo').onclick = () => { $('idleGo').disabled = true; act({ action: 'scheduleIdle', on: $('idleOn').value, off: $('idleOff').value }, `Scheduled every day ${$('idleOn').value}–${$('idleOff').value}`).then(r => { if (!r) render(); }); };
   let bulk = null;
   box.querySelectorAll('[data-bulk]').forEach(b => b.onclick = () => {
     bulk = b.dataset.bulk;
@@ -280,7 +296,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, scheduleIdle: e => `scheduled ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';

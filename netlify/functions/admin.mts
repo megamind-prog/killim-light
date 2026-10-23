@@ -5,7 +5,7 @@
 //                   | addNakamal | edit | editAccount | setPassword | deleteAccount | lightAll, ... }
 import type { Config, Context } from "@netlify/functions";
 import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
-import { allDayToday, dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
+import { allDayToday, dueEvent, notUpdated, sanitizeSchedule } from "../lib/schedule.mts";
 import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { compose, fbConfigured, getSocial, postNow, recentPosts, sanitizeSocial, type SocialKind } from "../lib/social.mts";
@@ -149,6 +149,24 @@ export default async (req: Request, context?: Context) => {
   try { body = await req.json(); } catch { return bad("Send JSON."); }
   const action = String(body?.action || "");
 
+  // Give every nakamal on the map that nobody keeps up to date the same daily light times (e.g. 17:00-21:00).
+  // Owners can still change the light or their own schedule afterwards.
+  if (action === "scheduleIdle") {
+    const on = clean(body?.on, 5), off = clean(body?.off, 5);
+    const r = sanitizeSchedule({ enabled: true, days: Array(7).fill({ on, off }) });
+    if (r.error) return bad("Choose an opening and a closing time.");
+    const [naks, statuses] = await Promise.all([readAll<Nakamal>("nak/"), readAll<Status>("status/")]);
+    const now = Date.now(), done: string[] = [];
+    for (const n of naks.values()) {
+      if (!statuses.get(n.id)?.approved || !notUpdated(n, now)) continue;
+      // Don't fire a time that already passed today just because the plan was saved.
+      await s.setJSON("nak/" + n.id, { ...n, schedule: r.schedule, schedConfirmed: true, schedLast: dueEvent(r.schedule, now)?.key, updatedAt: now });
+      done.push(n.name);
+    }
+    await logEvent(user, "team", "scheduleIdle", { detail: `${done.length} nakamal${done.length === 1 ? "" : "s"} ${on}–${off}: ${done.slice(0, 6).join(", ")}${done.length > 6 ? "…" : ""}` });
+    await rebuildIndex();
+    return reply({ scheduled: done.length });
+  }
   if (action === "socialSettings") {
     const cfg = sanitizeSocial(body);
     await s.setJSON("settings/social", cfg);
@@ -430,7 +448,7 @@ export default async (req: Request, context?: Context) => {
     const r = sanitizeSchedule(body);
     if (r.error) return bad(r.error);
     const due = dueEvent(r.schedule, Date.now());
-    const next: any = { ...nak, schedule: r.schedule, schedLast: due?.key, updatedAt: Date.now() };
+    const next: any = { ...nak, schedule: r.schedule, schedLast: due?.key, schedConfirmed: !!r.schedule!.enabled, updatedAt: Date.now() };
     if (due && allDayToday(r.schedule)) { next.light = "green"; next.lightAt = Date.now(); }
     await s.setJSON("nak/" + id, next);
     if (next.light !== nak.light) await afterLightChange(nak, next);

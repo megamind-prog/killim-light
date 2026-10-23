@@ -46,8 +46,13 @@ export function dueEvent(s: Schedule | undefined, now: number, last?: string): {
 }
 
 // Whether the light schedule may switch this nakamal's light.
-export const scheduleActive = (n: { owner: string | null; lightAt: number | null; ownerUsedLight?: boolean }) =>
-  n.owner ? !!n.ownerUsedLight : n.lightAt != null;
+// The team can also switch a schedule on for any nakamal (schedConfirmed), e.g. listings nobody keeps up to date.
+export const scheduleActive = (n: { owner: string | null; lightAt: number | null; ownerUsedLight?: boolean; schedConfirmed?: boolean }) =>
+  !!n.schedConfirmed || (n.owner ? !!n.ownerUsedLight : n.lightAt != null);
+// Not kept up to date: no schedule that runs, and the light hasn't been set in the last day.
+export const STALE_FOR_SCHEDULE_MS = 24 * 3600e3;
+export const notUpdated = (n: any, now = Date.now()) =>
+  !(n.schedule?.enabled && scheduleActive(n)) && (n.lightAt == null || now - n.lightAt > STALE_FOR_SCHEDULE_MS);
 
 // Whether today (Vanuatu time) is an open-24-hours day in this schedule.
 export function allDayToday(s: Schedule | undefined, now = Date.now()) {
