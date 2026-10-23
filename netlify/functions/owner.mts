@@ -7,7 +7,7 @@ import {
   photoUrl, readAll, rebuildIndex, reportCounts, logEvent, phoneDigits, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
 } from "../lib/data.mts";
-import { dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
+import { allDayToday, dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
 import { afterLightChange, announceSpecial, isUpcoming, MAX_SPECIALS, sanitizeSpecial, type HistoryDay, type Special } from "../lib/events.mts";
 
 const LIGHTS = ["green", "amber", "closed"] as const;
@@ -174,8 +174,11 @@ export default async (req: Request, context: Context) => {
     if (r.error) return bad(r.error);
     (patch as any).schedule = r.schedule;
     (patch as any).ownerUsedLight = true;
-    // Don't fire a time that already passed a few minutes ago just because the plan was saved.
-    (patch as any).schedLast = dueEvent(r.schedule, Date.now())?.key;
+    // Don't fire a time that already passed a few minutes ago just because the plan was saved,
+    // except "open 24 hours" today, which turns the light green straight away.
+    const due = dueEvent(r.schedule, Date.now());
+    (patch as any).schedLast = due?.key;
+    if (due && allDayToday(r.schedule)) { patch.light = "green"; patch.lightAt = Date.now(); }
   } else if (action === "special") {
     const r = sanitizeSpecial(body);
     if (r.error) return bad(r.error);
@@ -200,7 +203,7 @@ export default async (req: Request, context: Context) => {
   const approved = (await getStatus(id)).approved;
   if (approved) await rebuildIndex();
   // Alert phones that follow this nakamal, without making the owner wait.
-  if (action === "light") await afterLightChange(nak, next, context?.waitUntil?.bind(context));
+  if (action === "light" || (action === "schedule" && nak.light !== next.light)) await afterLightChange(nak, next, context?.waitUntil?.bind(context));
   return json({ ok: true, nakamals: await mine(user.id) });
 };
 

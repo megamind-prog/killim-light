@@ -18,13 +18,14 @@ if (!['all', 'green', 'fav', 'specials'].includes(filter)) filter = 'all';
 // "More filters": price, kava island, strength, open late.
 const more = { price: '', from: '', str: '', late: false };
 const priceNum = n => { const m = (n.prices || []).map(p => parseInt(String(p.price).replace(/[^\d]/g, ''), 10)).filter(x => x > 0); return m.length ? Math.min(...m) : null; };
-const lateOk = n => !!n.closeTime && (n.closeTime >= '23:00' || n.closeTime < '06:00');
+const todayPlan = n => n.schedule && n.schedule[new Date(Date.now() + 11 * 3600e3).getUTCDay()];
+const lateOk = n => { const d = todayPlan(n); if (d && (d.allDay || d.off >= '23:00' || d.off < d.on)) return true; return !!n.closeTime && (n.closeTime >= '23:00' || n.closeTime < '06:00'); };
 const moreActive = () => [more.price, more.from, more.str, more.late].filter(Boolean).length;
 const passMore = n => (!more.price || (priceNum(n) != null && priceNum(n) <= +more.price)) && (!more.from || n.kavaFrom === more.from)
   && (!more.str || n.strength === more.str) && (!more.late || lateOk(n));
 function usualLine(n) {
   const d = n.schedule && n.schedule[new Date(Date.now() + 11 * 3600e3).getUTCDay()];
-  return d ? t('usuallyToday', { on: d.on, off: d.off }) : t('usuallyNotToday');
+  return d ? (d.allDay ? t('usually24') : t('usuallyToday', { on: d.on, off: d.off })) : t('usuallyNotToday');
 }
 const vuToday = () => new Date(Date.now() + 11 * 3600e3).toISOString().slice(0, 10);
 function spWhen(sp) {

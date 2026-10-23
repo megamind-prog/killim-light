@@ -307,6 +307,12 @@ function rowHtml(n) {
       <span>Login: ${login}${sameOwner > 1 ? ` (${sameOwner} nakamals)` : ''}</span>
       <a href="${directions(n)}" target="_blank" rel="noopener">Directions to the pin ↗</a></div>
     <div class="lights small rowlights" role="group" aria-label="Light for ${esc(n.name)}">${['green', 'amber', 'closed'].map(k => `<button class="light l-${k}" type="button" data-light="${k}" aria-pressed="${n.shown === k}"><span class="bulb">${LIGHT[k].sym}</span>${LIGHT[k].label}</button>`).join('')}</div>
+    <p class="hint">⏰ ${n.schedule && n.schedule.enabled ? 'Light schedule: ' + esc(KL.schedText(n.schedule.days)) : 'No light schedule'} · <button class="link" type="button" data-a="sched">Change</button></p>
+    <form class="schedbox authform" hidden>
+      <label class="check"><input type="checkbox" data-sched-on ${!n.schedule || n.schedule.enabled ? 'checked' : ''}>Schedule on</label>
+      ${KL.schedGridHtml((n.schedule && n.schedule.days) || [0, 1, 2, 3, 4, 5, 6].map(() => ({ on: '17:00', off: '23:00' })))}
+      <p class="hint">Tick <b>24 h</b> (or press Open 24/7) for nakamals that never close: the light stays green all day and never shows "no update". A closing time earlier than the opening time means after midnight.</p>
+      <div class="row-btns"><button class="btn go" type="submit">Save schedule</button></div></form>
     ${(n.photos && n.photos.length) || (n.host && n.host.avatar) ? `<div class="thumbs small">
       ${n.host && n.host.avatar ? `<figure class="thumb"><img src="${esc(n.host.avatar)}" alt="Owner profile picture"><span class="tag">Profile</span><button class="x" type="button" data-a="rmavatar" aria-label="Remove profile picture">✕</button></figure>` : ''}
       ${(n.photos || []).map((p, i) => `<figure class="thumb"><a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="Photo ${i + 1}" loading="lazy"></a><button class="x" type="button" data-a="rmphoto" data-photo="${esc(p.id)}" aria-label="Remove photo ${i + 1}">✕</button></figure>`).join('')}
@@ -342,6 +348,11 @@ function wireRow(row) {
     act({ action: 'visit', id, date: row.querySelector('[type=date]').value, notes: clean(row.querySelector('[id^="vn-"]').value, 200), visited: vv.checked }, vv.checked ? 'Marked as visited' : 'Visit unticked');
   };
   row.querySelectorAll('[data-light]').forEach(b => b.onclick = () => act({ action: 'light', id, light: b.dataset.light }, `${n.name}: ${LIGHT[b.dataset.light].label}`));
+  const sf = row.querySelector('.schedbox');
+  if (sf) {
+    KL.wireSchedGrid(sf);
+    sf.onsubmit = e => { e.preventDefault(); act({ action: 'schedule', id, enabled: sf.querySelector('[data-sched-on]').checked, days: KL.readSchedGrid(sf) }, `${n.name}: schedule saved`); };
+  }
   row.addEventListener('click', e => {
     const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
     const a = b.dataset.a, target = () => clean(row.querySelector('[id^="mv-"]').value, 120);
@@ -349,6 +360,7 @@ function wireRow(row) {
     if (a === 'approve') act({ action: 'approve', id }, 'Approved: now on the public map');
     if (a === 'hide') act({ action: 'hide', id }, 'Hidden from the map');
     if (a === 'clearrep') act({ action: 'clearReports', id }, 'Reports cleared');
+    if (a === 'sched') { sf.hidden = !sf.hidden; return; }
     if (a === 'support') row.querySelector('.support').hidden = !row.querySelector('.support').hidden;
     if (a === 'edit') { if (editing === id) { editing = null; render(); } else { editing = id; render(); } }
     if (a === 'unassign') act({ action: 'unassign', id }, 'Owner login removed');

@@ -5,7 +5,7 @@
 //                   | addNakamal | edit | editAccount | setPassword | deleteAccount | lightAll, ... }
 import type { Config, Context } from "@netlify/functions";
 import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
-import { sanitizeSchedule } from "../lib/schedule.mts";
+import { allDayToday, dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
 import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { compose, fbConfigured, getSocial, postNow, recentPosts, sanitizeSocial, type SocialKind } from "../lib/social.mts";
@@ -425,6 +425,15 @@ export default async (req: Request, context?: Context) => {
     }
     const { claim, ...rest } = st as any;
     await s.setJSON("status/" + id, rest);
+  } else if (action === "schedule") {
+    // The team sets a nakamal's light schedule, e.g. "open 24 hours" for nakamals that never close.
+    const r = sanitizeSchedule(body);
+    if (r.error) return bad(r.error);
+    const due = dueEvent(r.schedule, Date.now());
+    const next: any = { ...nak, schedule: r.schedule, schedLast: due?.key, updatedAt: Date.now() };
+    if (due && allDayToday(r.schedule)) { next.light = "green"; next.lightAt = Date.now(); }
+    await s.setJSON("nak/" + id, next);
+    if (next.light !== nak.light) await afterLightChange(nak, next);
   } else if (action === "unassign") {
     if (nak.owner) await unassignNakamal(nak);
   } else if (action === "edit") {
@@ -444,7 +453,7 @@ export default async (req: Request, context?: Context) => {
   } else {
     return bad("Unknown action.");
   }
-  const detail = action === "approveClaim" ? (st as any).claim?.login : action === "light" ? body.light : action === "visit" ? (body?.visited ? "visited" : body?.date ? "visit " + clean(body.date, 10) : "notes") : action === "assign" ? clean(body?.email, 120) : undefined;
+  const detail = action === "schedule" ? (body?.enabled ? (allDayToday(sanitizeSchedule(body).schedule) ? "on (24 hours today)" : "on") : "off") : action === "approveClaim" ? (st as any).claim?.login : action === "light" ? body.light : action === "visit" ? (body?.visited ? "visited" : body?.date ? "visit " + clean(body.date, 10) : "notes") : action === "assign" ? clean(body?.email, 120) : undefined;
   await logEvent(user, "team", action, { id, name: nak.name, detail });
   await rebuildIndex();
   return reply();

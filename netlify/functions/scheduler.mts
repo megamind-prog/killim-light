@@ -3,7 +3,7 @@
 import type { Config } from "@netlify/functions";
 import { logEvent, readAll, rebuildIndex, store, type Nakamal } from "../lib/data.mts";
 import { afterLightChange } from "../lib/events.mts";
-import { dueEvent, scheduleActive, type Schedule } from "../lib/schedule.mts";
+import { allDayToday, dueEvent, scheduleActive, REFRESH_MS, type Schedule } from "../lib/schedule.mts";
 import { runSocial } from "../lib/social.mts";
 
 export default async () => {
@@ -15,7 +15,14 @@ export default async () => {
     // for listings with no owner yet, the team setting the light at least once. Until then only usual hours show.
     if (!scheduleActive(n)) continue;
     const due = dueEvent(n.schedule, now, n.schedLast);
-    if (!due) continue;
+    if (!due) {
+      // A 24-hour nakamal: quietly re-confirm a green light every few hours so it never shows "no update today".
+      if (n.light === "green" && allDayToday(n.schedule, now) && (!n.lightAt || now - n.lightAt >= REFRESH_MS)) {
+        await s.setJSON("nak/" + n.id, { ...n, lightAt: now });
+        changed++;
+      }
+      continue;
+    }
     const next = n.light === due.light ? { ...n, schedLast: due.key } : { ...n, light: due.light, lightAt: now, updatedAt: now, schedLast: due.key };
     await s.setJSON("nak/" + n.id, next);
     if (n.light !== due.light) {

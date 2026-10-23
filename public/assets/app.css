@@ -532,3 +532,5 @@ details.card > summary::-webkit-details-marker { display: none; }
 .sharetonight:hover { border-color: var(--green); }
 .socialprev { width: 100%; min-height: 16em; height: auto; font: .88rem/1.45 var(--f-body); white-space: pre-wrap; }
 .socialposts { display: grid; gap: 6px; margin-top: 8px; }
+.schedgrid.s4 { grid-template-columns: minmax(70px, auto) auto minmax(0, 1fr) minmax(0, 1fr); }
+.schedgrid.s4 > label.check:nth-child(4n+2) { justify-content: center; }

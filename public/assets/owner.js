@@ -1,7 +1,7 @@
 // Owner page: create account / log in, then manage any number of nakamals from one login.
 // /owner?quick=1 is the one-tap light page owners can keep on their home screen.
 (() => {
-const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, toast, setMsg, makePicker, uploadImage } = KL;
+const { t, $, esc, clean, LIGHT, updatedLine, reportWhat, toast, setMsg, makePicker, uploadImage, schedText, schedGridHtml, wireSchedGrid, readSchedGrid } = KL;
 const { start, authed, signOut } = KLAuthUI;
 const { applyStatic, langButton } = KLi18n;
 const MAX_PHOTOS = 6;
@@ -374,39 +374,21 @@ function statsCard(n) {
 }
 
 // ---------- light schedule ----------
-const wdNames = () => t('wd').split(',');
-function schedText(days) {
-  const wd = wdNames();
-  return days.map((d, i) => d ? `${wd[i]} ${d.on}–${d.off}` : null).filter(Boolean).join(' · ');
-}
 function scheduleCard(n) {
   const sc = n.schedule || { enabled: false, days: [null, null, null, null, null, { on: '17:00', off: '23:00' }, { on: '17:00', off: '23:00' }] };
-  const wd = wdNames();
   return `<form class="card authform" id="schedForm"><h2>${esc(t('schedTitle'))}</h2>
     <p class="hint">${esc(t('schedHint'))}</p>
     <label class="check"><input type="checkbox" id="schedOn" ${sc.enabled ? 'checked' : ''}>${esc(t('schedOn'))}</label>
-    <div class="schedgrid">
-      <span></span><b>${esc(t('schedOpen'))}</b><b>${esc(t('schedClose'))}</b>
-      ${wd.map((name, i) => { const d = sc.days[i]; return `<label class="check"><input type="checkbox" data-day="${i}" ${d ? 'checked' : ''}>${esc(name)}</label>
-        <input class="field" type="time" data-on="${i}" value="${esc(d ? d.on : '17:00')}" ${d ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedOpen'))}">
-        <input class="field" type="time" data-off="${i}" value="${esc(d ? d.off : '23:00')}" ${d ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedClose'))}">`; }).join('')}
-    </div>
-    <p class="hint">${esc(t('schedAfterMid'))} ${esc(t('schedLow'))}</p>
-    <div class="row-btns"><button class="btn" type="button" id="schedCopy">${esc(t('schedCopy'))}</button></div>
+    ${schedGridHtml(sc.days)}
+    <p class="hint">${esc(t('schedAfterMid'))} ${esc(t('sched24hint'))} ${esc(t('schedLow'))}</p>
     <button class="primary" type="submit">${esc(t('schedSave'))}</button><p class="msg" id="schedMsg"></p></form>`;
 }
 function wireSchedule(n) {
   const f = $('schedForm');
-  f.querySelectorAll('[data-day]').forEach(c => c.onchange = () => { const i = c.dataset.day; f.querySelector(`[data-on="${i}"]`).disabled = f.querySelector(`[data-off="${i}"]`).disabled = !c.checked; });
-  $('schedCopy').onclick = () => {
-    const first = [...f.querySelectorAll('[data-day]')].find(c => c.checked); if (!first) return;
-    const on = f.querySelector(`[data-on="${first.dataset.day}"]`).value, off = f.querySelector(`[data-off="${first.dataset.day}"]`).value;
-    f.querySelectorAll('[data-day]').forEach(c => { if (c.checked) { f.querySelector(`[data-on="${c.dataset.day}"]`).value = on; f.querySelector(`[data-off="${c.dataset.day}"]`).value = off; } });
-  };
+  wireSchedGrid(f);
   f.onsubmit = async e => {
     e.preventDefault();
-    const days = [0, 1, 2, 3, 4, 5, 6].map(i => f.querySelector(`[data-day="${i}"]`).checked ? { on: f.querySelector(`[data-on="${i}"]`).value, off: f.querySelector(`[data-off="${i}"]`).value } : null);
-    if (await act({ action: 'schedule', id: n.id, enabled: $('schedOn').checked, days }, t('schedSaved'), 'schedMsg')) setMsg('schedMsg', t('saved'), true);
+    if (await act({ action: 'schedule', id: n.id, enabled: $('schedOn').checked, days: readSchedGrid(f) }, t('schedSaved'), 'schedMsg')) setMsg('schedMsg', t('saved'), true);
   };
 }
 

@@ -132,6 +132,40 @@ async function api(path, body) {
   return data;
 }
 
+// ---------- light schedule editor (owner page and team page) ----------
+// days[0] = Sunday ... days[6] = Saturday; each null, { on, off } or { allDay: true } (open 24 hours).
+const wdNames = () => t('wd').split(',');
+function schedText(days) {
+  if (days.every(d => d && d.allDay)) return t('sched247');
+  const wd = wdNames();
+  return days.map((d, i) => d ? `${wd[i]} ${d.allDay ? t('sched24short') : d.on + '–' + d.off}` : null).filter(Boolean).join(' · ');
+}
+function schedGridHtml(days) {
+  const wd = wdNames();
+  return `<div class="schedgrid s4">
+      <span></span><b>${esc(t('sched24'))}</b><b>${esc(t('schedOpen'))}</b><b>${esc(t('schedClose'))}</b>
+      ${wd.map((name, i) => { const d = days[i], all = !!(d && d.allDay), timed = d && !all; return `<label class="check"><input type="checkbox" data-day="${i}" ${d ? 'checked' : ''}>${esc(name)}</label>
+        <label class="check" title="${esc(t('sched24'))}"><input type="checkbox" data-all="${i}" ${all ? 'checked' : ''} ${d ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('sched24'))}"></label>
+        <input class="field" type="time" data-on="${i}" value="${esc(timed ? d.on : '17:00')}" ${timed ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedOpen'))}">
+        <input class="field" type="time" data-off="${i}" value="${esc(timed ? d.off : '23:00')}" ${timed ? '' : 'disabled'} aria-label="${esc(name)} ${esc(t('schedClose'))}">`; }).join('')}
+    </div>
+    <div class="row-btns"><button class="btn" type="button" data-sched="copy">${esc(t('schedCopy'))}</button><button class="btn" type="button" data-sched="247">🕛 ${esc(t('sched247btn'))}</button></div>`;
+}
+function wireSchedGrid(f) {
+  const q = (k, i) => f.querySelector(`[data-${k}="${i}"]`);
+  const sync = i => { const on = q('day', i).checked, all = q('all', i).checked; q('all', i).disabled = !on; q('on', i).disabled = q('off', i).disabled = !on || all; };
+  for (let i = 0; i < 7; i++) { q('day', i).onchange = q('all', i).onchange = () => sync(i); }
+  f.querySelector('[data-sched="copy"]').onclick = () => {
+    const first = [0, 1, 2, 3, 4, 5, 6].find(i => q('day', i).checked); if (first === undefined) return;
+    for (let i = 0; i < 7; i++) if (q('day', i).checked) { q('all', i).checked = q('all', first).checked; q('on', i).value = q('on', first).value; q('off', i).value = q('off', first).value; sync(i); }
+  };
+  f.querySelector('[data-sched="247"]').onclick = () => { for (let i = 0; i < 7; i++) { q('day', i).checked = q('all', i).checked = true; sync(i); } };
+}
+const readSchedGrid = f => [0, 1, 2, 3, 4, 5, 6].map(i => {
+  const q = k => f.querySelector(`[data-${k}="${i}"]`);
+  return !q('day').checked ? null : q('all').checked ? { allDay: true } : { on: q('on').value, off: q('off').value };
+});
+
 // ---------- sharing ----------
 const shareUrl = n => location.origin + BASE + 'n/' + encodeURIComponent(n.id);
 async function shareNakamal(n) {
@@ -295,6 +329,6 @@ function makePicker(el, textEl, start, locBtn) {
 if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
-  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl, shareTonight,
+  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl, shareTonight, schedText, schedGridHtml, wireSchedGrid, readSchedGrid,
   makeMap, makePicker, pinIcon, REGIONS, osmIndex: OSM_INDEX };
 })();

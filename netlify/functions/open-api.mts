@@ -26,7 +26,7 @@ function shape(n: any, origin: string) {
     claimed: n.claimed !== false,
     // Imported from OpenStreetMap: that listing's location and name stay under the ODbL licence.
     source: n.osm ? { name: "© OpenStreetMap contributors", license: "ODbL-1.0", url: "https://www.openstreetmap.org/" + n.osm } : null,
-    schedule: n.schedule ? ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((day, i) => n.schedule[i] ? { day, on: n.schedule[i].on, off: n.schedule[i].off } : { day, on: null, off: null }) : null,
+    schedule: n.schedule ? ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((day, i) => n.schedule[i] ? { day, on: n.schedule[i].on, off: n.schedule[i].off, allDay: !!n.schedule[i].allDay } : { day, on: null, off: null, allDay: false }) : null,
     specials: (n.specials || []).map((sp: any) => ({ kind: sp.kind, title: sp.title, text: sp.text || null, date: sp.date, from: sp.from || null, to: sp.to || null })),
   };
 }
