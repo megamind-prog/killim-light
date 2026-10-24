@@ -589,6 +589,12 @@ details.card > summary::-webkit-details-marker { display: none; }
 .wabtn { background: #25d366; border-color: #25d366; color: #0b2e17; text-decoration: none; display: grid; justify-items: center; text-align: center; }
 .wabtn small { color: #0b2e17; opacity: .85; }
 
+/* Google-style map pins (zoomed in) */
+.gpin { background: none; border: 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.35)); }
+.gpin svg { display: block; overflow: visible; }
+.gpin.sel { z-index: 2000 !important; filter: drop-shadow(0 3px 4px rgba(0,0,0,.45)); }
+.gpin.l-stale, .gpin.l-pending, .gpin.l-reported { --l: var(--grey); }
+
 /* ===== Local look: sand-drawing pattern and kava-shell lights =====
    The background is an original continuous-line pattern in the spirit of Vanuatu sand drawing (sandroing),
    not a copy of any traditional drawing. */

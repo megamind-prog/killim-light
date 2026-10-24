@@ -223,7 +223,14 @@ async function uploadImage(kind, id, file) {
 }
 
 // ---------- map ----------
-const pinIcon = (l, sel) => L.divIcon({ className: `pin l-${l} ${sel ? 'sel' : ''}`, html: `<div>${SYM[l] || ''}</div>`, iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -14] });
+// Zoomed in: a map pin like Google Maps, coloured by the light, with the light's sign in its white centre.
+// The tip of the pin sits exactly on the nakamal. (Zoomed out, the map shows small dots instead.)
+const PIN_MARK = { green: '<circle cx="15" cy="14" r="4.2" fill="var(--green)"/>', amber: '<path d="M10.5 14a4.5 4.5 0 0 0 9 0z" fill="var(--amber)"/>', closed: '<path d="M12 11l6 6M18 11l-6 6" stroke="var(--red)" stroke-width="2.6" stroke-linecap="round"/>', stale: '<circle cx="15" cy="14" r="3.4" fill="var(--grey)"/>', reported: '<path d="M15 10.2v4.6M15 17.6v.2" stroke="var(--grey)" stroke-width="2.6" stroke-linecap="round"/>' };
+const pinIcon = (l, sel) => {
+  const w = sel ? 40 : 30, h = Math.round(w * 1.4);
+  return L.divIcon({ className: `gpin l-${l} ${sel ? 'sel' : ''}`, iconSize: [w, h], iconAnchor: [w / 2, h], popupAnchor: [0, -h + 4],
+    html: `<svg viewBox="0 0 30 42" width="${w}" height="${h}" aria-hidden="true"><path d="M15 41C15 41 2 25.5 2 15A13 13 0 0 1 28 15C28 25.5 15 41 15 41Z" fill="var(--l)" stroke="#fff" stroke-width="2"/><circle cx="15" cy="14" r="7.2" fill="#fff"/>${PIN_MARK[l] || ''}</svg>` });
+};
 
 // ---------- map layers: our own map, detailed streets, satellite (with or without labels) ----------
 // Satellite: sharp Esri pictures when the team has added an Esri key (ESRI_API_KEY on Netlify), otherwise free
