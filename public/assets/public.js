@@ -443,6 +443,12 @@ async function findMe(sort) {
 }
 $('locBtn').onclick = () => findMe(true);
 $('nearCta').onclick = () => findMe(true);
+// Shrink the top panel while the list is scrolled (with a gap between the two points so it never flickers).
+sheet.addEventListener('scroll', () => {
+  const y = sheet.scrollTop;
+  if (y > 90 && !sheet.classList.contains('scrolled')) sheet.classList.add('scrolled');
+  else if (y < 12 && sheet.classList.contains('scrolled')) sheet.classList.remove('scrolled');
+}, { passive: true });
 
 document.querySelectorAll('[data-f]').forEach(c => c.addEventListener('click', () => { filter = c.dataset.f; renderList(); }));
 // Share tonight's lights: the link's preview shows how many nakamals have kava ready right now.
