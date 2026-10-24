@@ -38,6 +38,7 @@
       <p class="kicker" data-t="tagline">Where is the kava ready tonight?</p>
       <h1 class="headline" id="headline" aria-live="polite">…</h1>
       <p class="subline" id="subline"></p>
+      <button class="nearcta" type="button" id="nearCta" data-t="nearCta">📍 Find kava near me</button>
       <button class="sharetonight" type="button" id="shareTonight"><span aria-hidden="true">↗</span> <span data-t="shareTonight">Share tonight's lights</span></button>
       <div class="controls">
         <label class="selwrap"><span class="sr" data-t="island">Island</span><select class="field select" id="island" aria-label="Island"></select></label>
@@ -51,12 +52,12 @@
           <button type="button" data-f="specials" aria-pressed="false" data-t="f.specials">📣 Specials</button>
         </div>
         <button class="morebtn" type="button" id="moreBtn" aria-expanded="false" aria-controls="morePanel"><span data-t="moreFilters">Filters</span> <b id="moreCount" hidden></b></button>
-        <select class="sortsel" id="sort" aria-label="Sort">
-          <option value="status" data-t="sort.status">Open first</option><option value="near" data-t="sort.near">Nearest to me</option>
-          <option value="rating" data-t="sort.rating">Top rated</option><option value="name" data-t="sort.name">Name</option></select>
       </div>
     </div>
     <div class="morepanel" id="morePanel" hidden>
+      <label for="sort"><span data-t="sortLabel">Sort</span><select class="field" id="sort">
+          <option value="status" data-t="sort.status">Open first</option><option value="near" data-t="sort.near">Nearest to me</option>
+          <option value="rating" data-t="sort.rating">Top rated</option><option value="name" data-t="sort.name">Name</option></select></label>
       <div class="row">
         <label for="fPrice"><span data-t="fPrice">Shell price up to</span><select class="field" id="fPrice"><option value="" data-t="any">Any</option><option value="100">100 vt</option><option value="150">150 vt</option><option value="200">200 vt</option></select></label>
         <label for="fFrom"><span data-t="kavaFromLabel">Kava from</span><select class="field" id="fFrom"><option value="" data-t="any">Any</option></select></label>

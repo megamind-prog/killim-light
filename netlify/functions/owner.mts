@@ -6,6 +6,7 @@ import {
   avatarUrl, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getStatus, imgStore, isAdmin, isPhoneLogin, json, newId,
   photoUrl, readAll, rebuildIndex, reportCounts, logEvent, phoneDigits, foreignOrigin, isTeamPhoneLogin, sanitizeDetails, sanitizeKava, sanitizePrices, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
+  isVerified,
 } from "../lib/data.mts";
 import { allDayToday, dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
 import { afterLightChange, announceSpecial, isUpcoming, MAX_SPECIALS, sanitizeSpecial, type HistoryDay, type Special } from "../lib/events.mts";
@@ -74,11 +75,16 @@ export default async (req: Request, context: Context) => {
     return { name: pr ? pr.name : (user.name || ""), avatar: pr?.avatar ? avatarUrl(user.id, pr.avatar) : null };
   };
   const phoneLogin = isPhoneLogin(user.email);
+  // The team never needs verifying; owners do, once, before switching a light or claiming a nakamal.
+  const verified = isAdmin(user) || (await isVerified(user.id));
+  const myPhone = phoneLogin ? phoneDigits(user.email!.split("@")[0]) : phoneDigits(contact?.phone || "");
+  const needVerify = () => bad("Verify your phone number first: send VERIFY to Killim Light on WhatsApp, or ask the Killim Light team.", 403);
 
   if (req.method === "GET") {
     return json({
       user: { email: phoneLogin ? null : user.email, name: user.name || "" }, phoneLogin,
       isAdmin: isAdmin(user), contact, profile: await profileOf(), nakamals: await mine(user.id, true),
+      verified, myPhone: myPhone.length >= 7 ? myPhone : null,
     });
   }
 
@@ -123,6 +129,7 @@ export default async (req: Request, context: Context) => {
 
   // "I run this nakamal": ask the team to hand over a listing the team added without an owner.
   if (action === "claim") {
+    if (!verified) return needVerify();
     const cid = clean(body?.id, 60);
     const cn = cid ? await getNak(cid) : null;
     if (!cn) return bad("Unknown nakamal.", 404);
@@ -152,8 +159,9 @@ export default async (req: Request, context: Context) => {
   } else if (action === "kava") {
     Object.assign(patch, sanitizeKava({ kavaFrom: nak.kavaFrom, strength: nak.strength, closeTime: nak.closeTime, ...body }));
   } else if (action === "light") {
+    if (!verified) return needVerify();
     if (!LIGHTS.includes(body?.light)) return bad("Choose a light.");
-    patch.light = body.light; patch.lightAt = Date.now();
+    patch.light = body.light; patch.lightAt = Date.now(); (patch as any).lightBy = "owner";
     (patch as any).ownerUsedLight = true;
   } else if (action === "note") {
     patch.note = clean(body?.note, 120);
@@ -170,6 +178,7 @@ export default async (req: Request, context: Context) => {
     await rebuildIndex();
     return json({ ok: true, nakamals: await mine(user.id) });
   } else if (action === "schedule") {
+    if (!verified) return needVerify();
     const r = sanitizeSchedule(body);
     if (r.error) return bad(r.error);
     (patch as any).schedule = r.schedule;
@@ -178,7 +187,7 @@ export default async (req: Request, context: Context) => {
     // except "open 24 hours" today, which turns the light green straight away.
     const due = dueEvent(r.schedule, Date.now());
     (patch as any).schedLast = due?.key;
-    if (due && allDayToday(r.schedule)) { patch.light = "green"; patch.lightAt = Date.now(); }
+    if (due && allDayToday(r.schedule)) { patch.light = "green"; patch.lightAt = Date.now(); (patch as any).lightBy = "schedule"; }
   } else if (action === "special") {
     const r = sanitizeSpecial(body);
     if (r.error) return bad(r.error);

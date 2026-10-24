@@ -1,4 +1,5 @@
 /* Killim Light. Layout: brand bar, then map full width with the nakamal list below; owner and team pages use narrow card panels. */
+/* (Owner "remote control" styles are near the end of this file.) */
 :root {
   --bg: #f3efe6; --card: #fffdf8; --ink: #1f1b14; --muted: #6a6152; --line: #e2dccf; --field: #f8f5ee;
   --brand: #5b4a2e; --brand-ink: #f4f2ec; --kava: #8a6d3b;
@@ -548,3 +549,66 @@ details.card > summary::-webkit-details-marker { display: none; }
 /* Place names stay readable on top of satellite pictures */
 .onsat .place span { color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
 .leaflet-control-attribution:empty { display: none; }
+
+/* Owner home: big lights first, then a photo nudge and simple tiles */
+.ocard .lights .light { min-height: 88px; font-size: 1rem; }
+.photonudge { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; background: var(--amber-bg); border-radius: 12px; padding: 12px; }
+.photonudge > span { font-size: 1.8rem; }
+.photonudge b { display: block; }
+.photonudge .hint { display: block; margin: 2px 0 0; }
+@media (max-width: 520px) { .photonudge { grid-template-columns: auto minmax(0, 1fr); } .photonudge .btn { grid-column: 1 / -1; } }
+.otiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.otile { display: grid; justify-items: center; gap: 4px; padding: 12px 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--field); color: var(--ink); font: 700 .85rem var(--f-body); cursor: pointer; text-align: center; }
+.otile span { font-size: 1.4rem; }
+.otile:hover { border-color: var(--green); }
+/* Public map: one clear question first */
+.nearcta { width: 100%; margin-top: 10px; border: 0; border-radius: 12px; padding: 14px; background: var(--green); color: #fff; font: 800 1.05rem var(--f-body); cursor: pointer; }
+.nearcta[hidden] { display: none; }
+.ocardname { flex: 1 1 200px; min-width: 0; }
+
+/* Owner remote control: one screen, three shells, everything else under "More" */
+.ocover { width: calc(100% + 32px); margin: -16px -16px 4px; height: 140px; object-fit: cover; border-radius: 16px 16px 0 0; display: block; }
+.speak { flex: none; border: 1px solid var(--line); background: var(--field); border-radius: 99px; width: 48px; height: 48px; font-size: 1.3rem; cursor: pointer; }
+.omore { border-top: 1px solid var(--line); padding-top: 6px; display: grid; gap: 10px; }
+.omore > summary { cursor: pointer; font-weight: 700; color: var(--muted); padding: 8px 0; list-style: none; }
+.omore > summary::-webkit-details-marker { display: none; }
+.offline-wait { margin: 0; padding: 8px 12px; border-radius: 10px; background: var(--grey-bg); font-weight: 700; font-size: .9rem; }
+.tapok { position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; background: rgba(0,0,0,.45); animation: tapin .15s ease-out; }
+.tapok > div { display: grid; justify-items: center; gap: 14px; background: var(--card); color: var(--ink); border: 4px solid var(--l); border-radius: 22px; padding: 26px 28px; max-width: 86vw; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.tapok b { font: 800 1.25rem/1.3 var(--f-display); color: var(--l); }
+.bulbbig { width: 120px; height: 86px; background: var(--shell-full) center / contain no-repeat; }
+.bulbbig.l-amber { background-image: var(--shell-low); }
+.bulbbig.l-closed { background-image: var(--shell-empty); }
+@keyframes tapin { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+.pinfield { font-size: 1.6rem; letter-spacing: .12em; padding: 14px; text-align: center; }
+.pinbig { border: 2px solid var(--green); }
+.verifycard { border: 3px solid var(--amber); }
+.verifycard.flash { animation: vflash .4s ease-in-out 3; }
+@keyframes vflash { 50% { box-shadow: 0 0 0 6px var(--amber-bg); } }
+.authcard .btn.big, .authcard .primary.big { white-space: normal; max-width: 100%; }
+.wabtn { background: #25d366; border-color: #25d366; color: #0b2e17; text-decoration: none; display: grid; justify-items: center; text-align: center; }
+.wabtn small { color: #0b2e17; opacity: .85; }
+
+/* ===== Local look: sand-drawing pattern and kava-shell lights =====
+   The background is an original continuous-line pattern in the spirit of Vanuatu sand drawing (sandroing),
+   not a copy of any traditional drawing. */
+:root { --sand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E %3Cg fill='none' stroke='%235b4a2e' stroke-width='1.6' stroke-linecap='round' opacity='.065'%3E %3Cpath d='M0 0 C20 10 10 20 30 30 S40 50 60 60 S80 70 90 90 S110 110 120 120'/%3E %3Cpath d='M120 0 C100 10 110 20 90 30 S80 50 60 60 S40 70 30 90 S10 110 0 120'/%3E %3Cpath d='M60 0 C70 10 80 10 90 30 S100 50 120 60'/%3E %3Cpath d='M60 0 C50 10 40 10 30 30 S20 50 0 60'/%3E %3Cpath d='M0 60 C20 70 20 80 30 90 S50 110 60 120'/%3E %3Cpath d='M120 60 C100 70 100 80 90 90 S70 110 60 120'/%3E %3Ccircle cx='60' cy='30' r='9'/%3E%3Ccircle cx='30' cy='60' r='9'/%3E%3Ccircle cx='90' cy='60' r='9'/%3E%3Ccircle cx='60' cy='90' r='9'/%3E %3C/g%3E %3Cg fill='%235b4a2e' opacity='.065'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3Ccircle cx='90' cy='30' r='2'/%3E%3Ccircle cx='30' cy='90' r='2'/%3E%3Ccircle cx='90' cy='90' r='2'/%3E%3Ccircle cx='60' cy='60' r='2'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='120' cy='0' r='2'/%3E%3Ccircle cx='0' cy='120' r='2'/%3E%3Ccircle cx='120' cy='120' r='2'/%3E%3Ccircle cx='60' cy='0' r='2'/%3E%3Ccircle cx='0' cy='60' r='2'/%3E%3Ccircle cx='120' cy='60' r='2'/%3E%3Ccircle cx='60' cy='120' r='2'/%3E%3C/g%3E%3C/svg%3E"); --sand-head: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E %3Cg fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round' opacity='.12'%3E %3Cpath d='M0 0 C20 10 10 20 30 30 S40 50 60 60 S80 70 90 90 S110 110 120 120'/%3E %3Cpath d='M120 0 C100 10 110 20 90 30 S80 50 60 60 S40 70 30 90 S10 110 0 120'/%3E %3Cpath d='M60 0 C70 10 80 10 90 30 S100 50 120 60'/%3E %3Cpath d='M60 0 C50 10 40 10 30 30 S20 50 0 60'/%3E %3Cpath d='M0 60 C20 70 20 80 30 90 S50 110 60 120'/%3E %3Cpath d='M120 60 C100 70 100 80 90 90 S70 110 60 120'/%3E %3Ccircle cx='60' cy='30' r='9'/%3E%3Ccircle cx='30' cy='60' r='9'/%3E%3Ccircle cx='90' cy='60' r='9'/%3E%3Ccircle cx='60' cy='90' r='9'/%3E %3C/g%3E %3Cg fill='%23ffffff' opacity='.12'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3Ccircle cx='90' cy='30' r='2'/%3E%3Ccircle cx='30' cy='90' r='2'/%3E%3Ccircle cx='90' cy='90' r='2'/%3E%3Ccircle cx='60' cy='60' r='2'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='120' cy='0' r='2'/%3E%3Ccircle cx='0' cy='120' r='2'/%3E%3Ccircle cx='120' cy='120' r='2'/%3E%3Ccircle cx='60' cy='0' r='2'/%3E%3Ccircle cx='0' cy='60' r='2'/%3E%3Ccircle cx='120' cy='60' r='2'/%3E%3Ccircle cx='60' cy='120' r='2'/%3E%3C/g%3E%3C/svg%3E");
+  --shell-full: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 46'%3E%3Cpath d='M3 15 Q3 43 32 43 Q61 43 61 15 Z' fill='%236b4626'/%3E %3Cpath d='M10 24 Q20 34 32 35 M54 24 Q44 34 32 35 M18 37 Q26 40 32 40' fill='none' stroke='%233f2814' stroke-width='1.3' opacity='.8'/%3E %3Cellipse cx='32' cy='15' rx='29' ry='6.5' fill='%23c08848'/%3E %3Cellipse cx='32' cy='15.5' rx='25' ry='4.8' fill='%232e1d0e'/%3E%3Cellipse cx='32' cy='15.6' rx='24.5' ry='4.5' fill='%239a7347'/%3E%3Cellipse cx='26' cy='14.6' rx='8' ry='1.3' fill='%23fff' opacity='.35'/%3E%3C/svg%3E"); --shell-low: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 46'%3E%3Cpath d='M3 15 Q3 43 32 43 Q61 43 61 15 Z' fill='%236b4626'/%3E %3Cpath d='M10 24 Q20 34 32 35 M54 24 Q44 34 32 35 M18 37 Q26 40 32 40' fill='none' stroke='%233f2814' stroke-width='1.3' opacity='.8'/%3E %3Cellipse cx='32' cy='15' rx='29' ry='6.5' fill='%23c08848'/%3E %3Cellipse cx='32' cy='15.5' rx='25' ry='4.8' fill='%232e1d0e'/%3E%3Cellipse cx='32' cy='18.4' rx='15' ry='1.9' fill='%239a7347'/%3E%3Cellipse cx='29' cy='18' rx='5' ry='.6' fill='%23fff' opacity='.3'/%3E%3C/svg%3E"); --shell-empty: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 46'%3E%3Cpath d='M3 15 Q3 43 32 43 Q61 43 61 15 Z' fill='%236b4626'/%3E %3Cpath d='M10 24 Q20 34 32 35 M54 24 Q44 34 32 35 M18 37 Q26 40 32 40' fill='none' stroke='%233f2814' stroke-width='1.3' opacity='.8'/%3E %3Cellipse cx='32' cy='15' rx='29' ry='6.5' fill='%23c08848'/%3E %3Cellipse cx='32' cy='15.5' rx='25' ry='4.8' fill='%232e1d0e'/%3E%3Cpath d='M22 5 L42 27 M42 5 L22 27' stroke='%234a0f08' stroke-width='8' stroke-linecap='round'/%3E%3Cpath d='M22 5 L42 27 M42 5 L22 27' stroke='%23ff3b2a' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E"); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E %3Cg fill='none' stroke='%23f1ece2' stroke-width='1.6' stroke-linecap='round' opacity='.045'%3E %3Cpath d='M0 0 C20 10 10 20 30 30 S40 50 60 60 S80 70 90 90 S110 110 120 120'/%3E %3Cpath d='M120 0 C100 10 110 20 90 30 S80 50 60 60 S40 70 30 90 S10 110 0 120'/%3E %3Cpath d='M60 0 C70 10 80 10 90 30 S100 50 120 60'/%3E %3Cpath d='M60 0 C50 10 40 10 30 30 S20 50 0 60'/%3E %3Cpath d='M0 60 C20 70 20 80 30 90 S50 110 60 120'/%3E %3Cpath d='M120 60 C100 70 100 80 90 90 S70 110 60 120'/%3E %3Ccircle cx='60' cy='30' r='9'/%3E%3Ccircle cx='30' cy='60' r='9'/%3E%3Ccircle cx='90' cy='60' r='9'/%3E%3Ccircle cx='60' cy='90' r='9'/%3E %3C/g%3E %3Cg fill='%23f1ece2' opacity='.045'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3Ccircle cx='90' cy='30' r='2'/%3E%3Ccircle cx='30' cy='90' r='2'/%3E%3Ccircle cx='90' cy='90' r='2'/%3E%3Ccircle cx='60' cy='60' r='2'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='120' cy='0' r='2'/%3E%3Ccircle cx='0' cy='120' r='2'/%3E%3Ccircle cx='120' cy='120' r='2'/%3E%3Ccircle cx='60' cy='0' r='2'/%3E%3Ccircle cx='0' cy='60' r='2'/%3E%3Ccircle cx='120' cy='60' r='2'/%3E%3Ccircle cx='60' cy='120' r='2'/%3E%3C/g%3E%3C/svg%3E"); } }
+:root[data-theme="dark"] { --sand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E %3Cg fill='none' stroke='%23f1ece2' stroke-width='1.6' stroke-linecap='round' opacity='.045'%3E %3Cpath d='M0 0 C20 10 10 20 30 30 S40 50 60 60 S80 70 90 90 S110 110 120 120'/%3E %3Cpath d='M120 0 C100 10 110 20 90 30 S80 50 60 60 S40 70 30 90 S10 110 0 120'/%3E %3Cpath d='M60 0 C70 10 80 10 90 30 S100 50 120 60'/%3E %3Cpath d='M60 0 C50 10 40 10 30 30 S20 50 0 60'/%3E %3Cpath d='M0 60 C20 70 20 80 30 90 S50 110 60 120'/%3E %3Cpath d='M120 60 C100 70 100 80 90 90 S70 110 60 120'/%3E %3Ccircle cx='60' cy='30' r='9'/%3E%3Ccircle cx='30' cy='60' r='9'/%3E%3Ccircle cx='90' cy='60' r='9'/%3E%3Ccircle cx='60' cy='90' r='9'/%3E %3C/g%3E %3Cg fill='%23f1ece2' opacity='.045'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3Ccircle cx='90' cy='30' r='2'/%3E%3Ccircle cx='30' cy='90' r='2'/%3E%3Ccircle cx='90' cy='90' r='2'/%3E%3Ccircle cx='60' cy='60' r='2'/%3E%3Ccircle cx='0' cy='0' r='2'/%3E%3Ccircle cx='120' cy='0' r='2'/%3E%3Ccircle cx='0' cy='120' r='2'/%3E%3Ccircle cx='120' cy='120' r='2'/%3E%3Ccircle cx='60' cy='0' r='2'/%3E%3Ccircle cx='0' cy='60' r='2'/%3E%3Ccircle cx='120' cy='60' r='2'/%3E%3Ccircle cx='60' cy='120' r='2'/%3E%3C/g%3E%3C/svg%3E"); }
+body, .side, .sidehead { background-image: var(--sand); background-size: 120px 120px; }
+.topbar, .appbar { background-image: var(--sand-head); background-size: 96px 96px; }
+/* Light buttons: a coconut shell full of kava, a little kava left, or empty with a red X.
+   Strong colour border and tinted inside; the chosen one is filled with its colour. */
+.light { position: relative; border: 3px solid var(--l); background: var(--l); color: var(--card); box-shadow: 0 3px 0 color-mix(in srgb, var(--l) 60%, #000); }
+.light[aria-pressed="true"] { border-color: var(--l); box-shadow: 0 0 0 3px var(--card), 0 0 0 6px var(--l), 0 4px 14px var(--shadow); }
+.light[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 6px; right: 8px; width: 24px; height: 24px; border-radius: 50%; background: var(--card); color: var(--l); font: 900 .95rem/24px var(--f-body); }
+.light[aria-pressed="false"] { opacity: .9; }
+.light .bulb, .light.l-closed .bulb { width: 64px; height: 46px; border: 0; border-radius: 0; background: var(--shell-full) center / contain no-repeat; font-size: 0; color: transparent; filter: drop-shadow(0 2px 1px rgba(0,0,0,.25)); }
+.light.l-amber .bulb { background-image: var(--shell-low); }
+.light.l-closed .bulb { background-image: var(--shell-empty); }
+.lights.small .bulb { width: 40px; height: 29px; }
+@media (max-width: 420px) { .light .bulb, .light.l-closed .bulb { width: 54px; height: 39px; } }
+/* Main buttons shaped a little like a shell bowl: rounder underneath, with a light rim on top */
+.btn.go, .nearcta, .primary { border-radius: 12px 12px 22px 22px; box-shadow: inset 0 2px 0 rgba(255,255,255,.22), 0 2px 0 rgba(0,0,0,.18); }
+

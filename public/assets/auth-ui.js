@@ -16,8 +16,9 @@ const toLogin = v => {
 };
 
 async function start({ box, allowSignup, title, intro, onUser }) {
-  let settings = { providers: {}, disableSignup: false, autoconfirm: false };
+  let settings = { providers: {}, disableSignup: false, autoconfirm: false }, waNum = null;
   try { settings = await A.getSettings(); } catch {}
+  if (allowSignup) { try { waNum = (await KL.api('/api/mapconfig')).waNumber || null; } catch {} }
   const google = settings.providers && settings.providers.google;
   let view = () => (allowSignup ? showChoice() : showForm('login'));
   const ctl = { redraw: () => view() };
@@ -52,17 +53,89 @@ async function start({ box, allowSignup, title, intro, onUser }) {
   view();
   return ctl;
 
-  // First screen for owners: pick "Create account" or "Log in" before any form appears.
+  // Forgot PIN or password on a phone account: the owner sends "PIN" to the Killim Light WhatsApp number and gets
+  // a new PIN back. WhatsApp proves the number is theirs, and replies to messages they send are free.
+  function waLink() { return `https://wa.me/${encodeURIComponent(waNum)}?text=${encodeURIComponent('PIN')}`; }
+
+  // First screen for owners: create an account (phone number + PIN) or log in (phone or email, PIN or password).
   function showChoice() {
     view = showChoice;
     box.innerHTML = `<div class="card authcard choice">
       <h3>${esc(title())}</h3>
       <p class="hint">${esc(t('needAccount'))}</p>
-      <button class="primary big" type="button" data-go="signup">${esc(t('createAccount'))}<small>${esc(t('createSub'))}</small></button>
-      <button class="btn big" type="button" data-go="login">${esc(t('logIn'))}<small>${esc(t('logInSub'))}</small></button>
+      <button class="primary big" type="button" data-go="phone">${esc(t('createAccount'))}<small>${esc(t('createSubPhone'))}</small></button>
+      <button class="btn big" type="button" data-go="login">${esc(t('logIn'))}<small>${esc(t('logInSubAny'))}</small></button>
       <ol class="steps"><li>${esc(t('step1'))}</li><li>${esc(t('step2'))}</li><li>${esc(t('step3'))}</li></ol>
-      <p class="hint">${esc(t('noEmail'))}</p></div>`;
-    box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => showForm(b.dataset.go));
+      <p class="hint"><button class="link" type="button" data-go="signup">${esc(t('signupEmail'))}</button></p></div>`;
+    box.querySelectorAll('[data-go]').forEach(b => b.onclick = () => b.dataset.go === 'phone' ? showSignupPhone() : showForm(b.dataset.go));
+  }
+
+  // Create an account with a phone number and a PIN the owner chooses. No email needed.
+  function showSignupPhone() {
+    view = showSignupPhone;
+    box.innerHTML = `<div class="card authcard pincard">
+      <button class="link" type="button" id="backChoice">${esc(t('back'))}</button>
+      <h3>${esc(t('createYours'))}</h3>
+      <form id="psForm" class="authform">
+        <label for="psName">${esc(t('yourName'))}<input class="field" id="psName" autocomplete="name" maxlength="80" required></label>
+        <label for="psPhone">${esc(t('pinPhone'))}<input class="field pinfield" id="psPhone" type="tel" inputmode="numeric" autocomplete="username" maxlength="20" required placeholder="555 1234"></label>
+        <label for="psPin">${esc(t('pinChoose'))}<input class="field pinfield" id="psPin" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" maxlength="8" required placeholder="••••••"></label>
+        <label for="psPin2">${esc(t('pinAgain'))}<input class="field pinfield" id="psPin2" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="new-password" minlength="6" maxlength="8" required placeholder="••••••"></label>
+        <p class="hint">${esc(t('pinRules'))}</p>
+        <button class="primary big" type="submit">${esc(t('tabCreate'))}</button>
+        <p class="msg" id="psMsg"></p>
+        <div class="row-btns" id="psHelp" hidden></div>
+      </form></div>`;
+    $('backChoice').onclick = showChoice;
+    $('psForm').onsubmit = async e => {
+      e.preventDefault();
+      const name = $('psName').value.trim(), phone = $('psPhone').value.trim(), pin = $('psPin').value.trim();
+      if (pin !== $('psPin2').value.trim()) return setMsg('psMsg', t('pinMismatch'), false);
+      const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+      setMsg('psMsg', t('loading'), true);
+      try {
+        await KL.api('/api/phonesignup', { name, phone, pin });
+        onUser(await A.login(toLogin(phone).email, pin));
+      } catch (err) {
+        btn.disabled = false;
+        setMsg('psMsg', err.message || t('netError'), false);
+        if (err.status === 409) {
+          const help = $('psHelp'); help.hidden = false;
+          help.innerHTML = `<button class="btn go" type="button" id="psLogin">${esc(t('loginThis'))}</button><button class="btn" type="button" id="psForgot">${esc(t('pinForgot'))}</button>`;
+          $('psLogin').onclick = () => showForm('login', null, phone);
+          $('psForgot').onclick = () => showPinForgot(phone);
+        }
+      }
+    };
+    $('psName').focus();
+  }
+
+  // Forgot PIN on a phone account: new PIN by WhatsApp (or by SMS, when only that is set up).
+  function showPinForgot(prefill = '') {
+    view = () => showPinForgot(prefill);
+    box.innerHTML = `<div class="card authcard pincard">
+      <button class="link" type="button" id="backLogin">${esc(t('back'))}</button>
+      <h3>${esc(t('pinForgotTitle'))}</h3>
+      ${waNum ? `<ol class="steps"><li>${esc(t('waStep1'))}</li><li>${esc(t('waStep2'))}</li><li>${esc(t('waStep3'))}</li></ol>
+        <a class="btn big wabtn" href="${waLink()}" target="_blank" rel="noopener">🟢 ${esc(t('waReset'))}<small>${esc(t('waResetSub'))}</small></a>
+        <p class="hint">${esc(t('waOwnPhone'))}</p>`
+      : `<form id="fForm" class="authform">
+        <label for="fPhone">${esc(t('pinPhone'))}<input class="field pinfield" id="fPhone" type="tel" inputmode="numeric" maxlength="20" required placeholder="555 1234" value="${esc(prefill)}"></label>
+        <p class="hint">${esc(t('pinForgotHint'))}</p>
+        <button class="primary big" type="submit">${esc(t('pinSend'))}</button>
+        <p class="msg" id="fMsg"></p>
+      </form>`}
+      <button class="btn" type="button" id="toLogin">${esc(t('backToLogin'))}</button></div>`;
+    $('backLogin').onclick = $('toLogin').onclick = () => showForm('login', null, prefill);
+    if ($('fForm')) $('fForm').onsubmit = async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+      try {
+        const r = await KL.api('/api/pinreset', { phone: $('fPhone').value });
+        if (r.noSms) setMsg('fMsg', t('pinNoSms'), false);
+        else setMsg('fMsg', t('pinSent'), true);
+      } catch (err) { setMsg('fMsg', err.message || t('netError'), false); btn.disabled = false; }
+    };
   }
 
   function showForm(mode, notice, prefill = '') {
@@ -93,7 +166,7 @@ async function start({ box, allowSignup, title, intro, onUser }) {
     if ($('gBtn')) $('gBtn').onclick = () => { try { localStorage.setItem('kl-return', location.pathname); } catch {} A.oauthLogin('google'); };
     if ($('forgot')) $('forgot').onclick = () => {
       const v = $('aEmail').value;
-      if (v && !v.includes('@') && /\d{5}/.test(v.replace(/\D/g, ''))) return setMsg('aMsg', t('forgotPin'), false);
+      if (v && !v.includes('@') && /\d{5}/.test(v.replace(/\D/g, ''))) return showPinForgot(v);
       showForgot(v);
     };
     $('authForm').onsubmit = async e => {
@@ -140,8 +213,9 @@ async function start({ box, allowSignup, title, intro, onUser }) {
           setMsg('aMsg', t('confirmFirst'), false);
           if (!login.phone) offer([['hResend', t('resendConfirm'), true]]);
         } else if (/invalid|password|credentials|grant/i.test(m)) {
-          setMsg('aMsg', login.phone ? t('wrongLogin') + ' ' + t('forgotPin') : t('wrongLogin'), false);
-          if (!login.phone && raw) offer([['hReset', t('resetThis')]]);
+          setMsg('aMsg', t('wrongLogin'), false);
+          if (login.phone) { offer([['hPinReset', t('pinForgot'), true]]); $('hPinReset').onclick = () => showPinForgot(raw); }
+          else if (raw) offer([['hReset', t('resetThis')]]);
         } else {
           setMsg('aMsg', m || t('loginFail'), false);
         }

@@ -80,7 +80,7 @@ function updatedLine(n) {
   if (l === 'closed' && n.light !== 'closed' && ac && Date.now() >= ac) return t('lightAutoClosed', { time: fmtClose(n.closeTime) });
   if (l === 'stale') return t('lightStale', { light: LIGHT[n.light].label.toLowerCase(), ago: ago(n.lightAt) });
   if (l === 'reported') return t('reportedWhy', { n: n.reports.count, what: reportWhat(n.reports) });
-  return t('lightUpdated', { ago: ago(n.lightAt) }) + ((l === 'green' || l === 'amber') && n.closeTime ? ' · ' + t('closesAt', { time: fmtClose(n.closeTime) }) : '');
+  return t(n.lightBy ? 'lightBy.' + n.lightBy : 'lightUpdated', { ago: ago(n.lightAt) }) + ((l === 'green' || l === 'amber') && n.closeTime ? ' · ' + t('closesAt', { time: fmtClose(n.closeTime) }) : '');
 }
 
 // ---------- helpers ----------

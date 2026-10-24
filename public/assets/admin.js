@@ -54,7 +54,7 @@ function render() {
       <button type="button" class="addbtn" data-view="add" aria-selected="${view === 'add'}">+ Add nakamal</button></nav>`;
   const loginCard = lastLogin ? `<div class="card logincard"><h2>${lastLogin.reset ? 'New PIN' : 'New phone login'}: give this to the owner</h2>
       <div class="bigcode"><span>Phone <b>${esc(lastLogin.phone)}</b></span><span>PIN <b>${esc(lastLogin.pin)}</b></span></div>
-      <p class="hint">They log in on the owner page by typing their phone number and this PIN. Write it down for them now; it isn't shown again.</p>
+      <p class="hint">${lastLogin.sms ? '✓ Also sent to the owner by text message. ' : ''}They log in on the owner page with “Namba fon + PIN”. Write it down for them now; it isn't shown again.${lastLogin.sms ? '' : ' (Text messages aren’t set up, so nothing was sent by SMS.)'}</p>
       <button class="link" type="button" id="hideLogin">Done</button></div>` : '';
   const body = view === 'acc' ? accountsHtml() : view === 'add' ? addHtml() : view === 'log' ? logHtml(log) : view === 'tools' ? toolsHtml() : view === 'nak' ? nakHtml() : todayHtml();
   box.innerHTML = nav + loginCard + body + (drawer && view !== 'add' ? drawerHtml() : '');
@@ -311,7 +311,7 @@ const said = {
   createLogin: e => `made a phone login for ${e.detail}`, resetPin: e => `made a new PIN for ${e.detail}`, setPassword: e => `set a new password for ${e.detail}`,
   editAccount: e => `edited the account ${e.detail}`, deleteAccount: e => `deleted the account ${e.detail}`, settings: e => `switched ${e.detail}`,
   register: e => `registered ${e.name}`, note: e => e.detail ? `changed the note on ${e.name}: “${e.detail}”` : `cleared the note on ${e.name}`, update: e => `edited the page of ${e.name}`,
-  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, scheduleIdle: e => `scheduled ${e.detail}`, deleteAllOwners: e => `started fresh: ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
+  kava: e => `edited the kava details of ${e.name}`, special: e => `posted a special at ${e.name}: “${e.detail}”`, schedule: e => `turned the light schedule ${e.detail} for ${e.name}`, bulkAdd: e => `added ${e.detail}`, scheduleIdle: e => `scheduled ${e.detail}`, deleteAllOwners: e => `started fresh: ${e.detail}`, phoneSignup: e => `made a phone + PIN account (${e.detail})`, pinReset: e => `got a new PIN (${e.detail})`, verifyAccount: e => `verified ${e.detail}`, importOsm: e => `imported ${e.detail}`, claim: e => `asked to take over ${e.name}`, approveClaim: e => `handed ${e.name} to ${e.detail}`, rejectClaim: e => `turned down a claim on ${e.name}`, removeSpecial: e => `removed a special at ${e.name}`, revokeKey: e => `switched off the API key of ${e.detail}`, prices: e => `edited the prices of ${e.name}`, addPhoto: e => `added a photo to ${e.name}`, remove: e => `removed ${e.name}`,
 };
 function logList(entries) {
   if (!entries.length) return '<p class="hint">Nothing yet. Changes by the team and by owners show here.</p>';
@@ -543,13 +543,14 @@ function accHtml(a) {
   return `<div class="adm acc" data-uid="${esc(a.id)}">
     <div class="head">${a.profile && a.profile.avatar ? `<img class="accpic" src="${esc(a.profile.avatar)}" alt="">` : ''}
       <b>${esc((a.contact && a.contact.owner) || a.name || (a.profile && a.profile.name) || a.email || a.phone || 'No name')}</b>
-      ${a.team ? '<span class="pill l-green">Team</span>' : ''}${me ? '<span class="pill">You</span>' : ''}${a.confirmed ? '' : '<span class="pill l-amber">Email not confirmed</span>'}</div>
+      ${a.team ? '<span class="pill l-green">Team</span>' : ''}${me ? '<span class="pill">You</span>' : ''}${a.confirmed ? '' : '<span class="pill l-amber">Email not confirmed</span>'}${a.team ? '' : a.verified ? `<span class="pill l-green">✓ Verified${a.verified.by === 'whatsapp' ? ' (WhatsApp)' : ' (team)'}</span>` : '<span class="pill l-amber">Not verified</span>'}</div>
     <div class="contact">
       <span>Login: <b style="user-select:all">${esc(a.email || a.phone || '')}</b> · ${typeLabel(a)}</span>
       <span>Phone for the team: <b style="user-select:all">${esc((a.contact && a.contact.phone) || 'not given')}</b>${a.profile && a.profile.name ? ` · Shown publicly as <b>${esc(a.profile.name)}</b>` : ''}</span>
       <span>Joined ${day(a.createdAt)} · Last login ${day(a.lastSignInAt)}</span>
       <span>Nakamals: ${a.nakamals.length ? a.nakamals.map(n => `<button class="link" type="button" data-goto="${esc(n.id)}">${esc(n.name)}</button>${n.approved ? '' : ' (waiting)'}`).join(', ') : '<b>none yet</b>'}</span></div>
     <div class="row-btns">
+      ${a.team ? '' : a.verified ? '<button class="btn" data-a="aunverify">Remove verified</button>' : '<button class="btn go" data-a="averify">✓ Mark verified</button>'}
       <button class="btn" data-a="aedit">Edit details</button>
       ${a.loginType === 'phone' ? '<button class="btn" data-a="apin">Make a new PIN</button>' : a.loginType === 'email' ? '<button class="btn" data-a="apw">Set a new password</button>' : ''}
       ${me || a.team ? '' : '<button class="btn danger" data-a="adel">Delete account</button>'}</div>
@@ -575,6 +576,8 @@ function wireAccounts() {
   box.querySelectorAll('.acc').forEach(row => {
     const uid = row.dataset.uid, a = accounts.find(x => x.id === uid);
     const show = k => row.querySelectorAll('[data-box]').forEach(b => b.hidden = b.dataset.box !== k || !b.hidden);
+    const vb = row.querySelector('[data-a=averify],[data-a=aunverify]');
+    if (vb) vb.onclick = () => act({ action: 'verifyAccount', userId: uid, verified: vb.dataset.a === 'averify', label: a.email || a.phone || '' }, vb.dataset.a === 'averify' ? 'Verified: they can switch lights and claim' : 'Verification removed');
     row.querySelector('[data-box=edit]').onsubmit = e => { e.preventDefault(); const f = e.target;
       act({ action: 'editAccount', userId: uid, owner: clean(f.owner.value, 80), phone: clean(f.phone.value, 30), profileName: clean(f.profileName.value, 60) }, 'Account saved'); };
     row.querySelector('[data-box=pw]').onsubmit = e => { e.preventDefault();

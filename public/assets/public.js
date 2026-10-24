@@ -147,7 +147,7 @@ function renderList() {
     const l = lightOf(n), text = ((n.name || '') + ' ' + (n.area || '')).toLowerCase();
     return (filter === 'all' || filter === l || (filter === 'fav' && favs.has(n.id)) || (filter === 'specials' && (n.specials || []).length)) && passMore(n) && (!query || text.includes(query));
   }).sort((A, B) => {
-    if (sortBy === 'near' && me) return km(me, A) - km(me, B);
+    if (sortBy === 'near' && me) { const r = x => ({ green: 0, amber: 1 }[lightOf(x)] ?? 2); return r(A) - r(B) || km(me, A) - km(me, B); }
     if (sortBy === 'rating') return B.rating.avg - A.rating.avg || B.rating.count - A.rating.count || A.name.localeCompare(B.name);
     if (sortBy === 'name') return A.name.localeCompare(B.name);
     if (filter === 'specials') { const a = A.specials[0], b = B.specials[0]; return (a.date + a.from).localeCompare(b.date + b.from); }
@@ -435,12 +435,14 @@ async function findMe(sort) {
   try {
     me = await locate();
     placeMe(me);
+    $('nearCta').hidden = true;
     map.flyTo([me.lat, me.lng], 15, { duration: .8 });
     if (sort) { sortBy = 'near'; $('sort').value = 'near'; }
     region = 'all'; paintIslands(); renderList();
   } catch { toast(t('locDenied')); if (sortBy === 'near') { sortBy = 'status'; $('sort').value = 'status'; } }
 }
 $('locBtn').onclick = () => findMe(true);
+$('nearCta').onclick = () => findMe(true);
 
 document.querySelectorAll('[data-f]').forEach(c => c.addEventListener('click', () => { filter = c.dataset.f; renderList(); }));
 // Share tonight's lights: the link's preview shows how many nakamals have kava ready right now.

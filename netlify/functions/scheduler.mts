@@ -23,7 +23,7 @@ export default async () => {
       }
       continue;
     }
-    const next = n.light === due.light ? { ...n, schedLast: due.key } : { ...n, light: due.light, lightAt: now, updatedAt: now, schedLast: due.key };
+    const next = n.light === due.light ? { ...n, schedLast: due.key } : { ...n, light: due.light, lightAt: now, lightBy: "schedule", updatedAt: now, schedLast: due.key };
     await s.setJSON("nak/" + n.id, next);
     if (n.light !== due.light) {
       changed++;

@@ -27,6 +27,8 @@ Runs on Netlify: Functions + Blobs (storage) + Identity (logins). No other servi
    - `ADMIN_EMAILS` — team emails that can open `/chief`, comma-separated
    - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` — for phone alerts (make them with `npx web-push generate-vapid-keys`)
    - Optional: `FB_PAGE_ID`, `FB_PAGE_TOKEN` — lets the app post to a Facebook Page by itself (steps on `/chief` → Tools)
+   - Optional: `WA_TOKEN`, `WA_PHONE_ID`, `WA_NUMBER`, `WA_VERIFY_TOKEN`, `WA_APP_SECRET` — Killim Light WhatsApp number (Meta Cloud API): owners send VERIFY to verify their number and PIN to get a new PIN; webhook at `/api/whatsapp`
+   - Optional: `SMS_GATEWAY_USER`, `SMS_GATEWAY_PASS` (and `SMS_GATEWAY_URL`) — SMS Gateway for Android: texts PINs to owners
    - Optional: `ESRI_API_KEY` — sharp satellite pictures (a public ArcGIS key limited to your site's addresses); without it the map uses free Sentinel-2 cloudless pictures
 
    Never put tokens or keys in the code: they belong in Netlify's environment variables only.

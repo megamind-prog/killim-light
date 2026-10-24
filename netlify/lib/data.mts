@@ -154,6 +154,12 @@ export const phoneLoginEmail = (phone: unknown) => `${phoneDigits(phone)}@${PHON
 export const isPhoneLogin = (email?: string) => !!email && email.endsWith("@" + PHONE_LOGIN_DOMAIN);
 // A phone login is only real if our team made it: the mark lives in app_metadata, which users can't change themselves.
 export const PHONE_MARK = { killim_phone: true };
+// Owners must be verified before they switch a light for the first time or claim a nakamal:
+// by WhatsApp (they send VERIFY from their own number) or by the team (call or visit).
+//   verified/<userId>  { by: "whatsapp" | "team", at }
+export const isVerified = async (uid: string) => !!(await store().get("verified/" + uid, { type: "json" }));
+export const setVerified = (uid: string, by: string) => store().setJSON("verified/" + uid, { by, at: Date.now() });
+export const unsetVerified = (uid: string) => store().delete("verified/" + uid);
 export const isTeamPhoneLogin = (u: User | null) => !!u && isPhoneLogin(u.email) && (u.appMetadata as any)?.killim_phone === true;
 // Changes must come from our own pages: refuse requests sent from another website.
 export function foreignOrigin(req: Request) {
@@ -230,7 +236,7 @@ export async function rebuildIndex() {
     return {
       id: n.id, name: n.name, area: n.area, about: n.about, hours: n.hours, lat: n.lat, lng: n.lng, region: regionOf(n.lat, n.lng),
       prices: n.prices || [], kavaFrom: n.kavaFrom || "", strength: n.strength || "", closeTime: n.closeTime || "",
-      light: n.light, lightAt: n.lightAt, note: n.note,
+      light: n.light, lightAt: n.lightAt, lightBy: (n as any).lightBy || null, note: n.note,
       reports: rep && rep.count >= REPORT_MIN ? rep : null,
       photos: (n.photos || []).map((p) => ({ url: photoUrl(n.id, p), w: p.w, h: p.h })),
       specials: specials.get(n.id) || [],

@@ -8,12 +8,14 @@ import { afterLightChange, isUpcoming, type Special } from "../lib/events.mts";
 import { allDayToday, dueEvent, notUpdated, sanitizeSchedule } from "../lib/schedule.mts";
 import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
+import { pinText, sendSms, smsConfigured } from "../lib/sms.mts";
 import { compose, fbConfigured, getSocial, postNow, recentPosts, sanitizeSocial, type SocialKind } from "../lib/social.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
   avatarUrl, newId, sanitizeDetails, sanitizeKava, sanitizePrices, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getSettings, getStatus, imgStore, isAdmin, isPhoneLogin, json,
   phoneDigits, phoneLoginEmail, photoUrl, readAll, rebuildIndex, logEvent, readLog, whoLabel, foreignOrigin, PHONE_MARK, reportCounts, shownLight, store, vuDate,
   type Contact, type Nakamal, type Profile, type Report, type Status,
+  setVerified, unsetVerified,
 } from "../lib/data.mts";
 
 async function overview() {
@@ -70,8 +72,8 @@ async function allUsers(): Promise<User[]> {
 }
 // Every registered account, with its contact details, profile and nakamals, for the team's Accounts tab.
 async function accounts() {
-  const [users, naks, statuses, contacts, profiles] = await Promise.all([
-    allUsers(), readAll<Nakamal>("nak/"), readAll<Status>("status/"), readAll<Contact>("contact/"), readAll<Profile>("profile/"),
+  const [users, naks, statuses, contacts, profiles, verified] = await Promise.all([
+    allUsers(), readAll<Nakamal>("nak/"), readAll<Status>("status/"), readAll<Contact>("contact/"), readAll<Profile>("profile/"), readAll<{ by: string; at: number }>("verified/"),
   ]);
   return users.map((u) => {
     const phone = isPhoneLogin(u.email);
@@ -80,6 +82,7 @@ async function accounts() {
       id: u.id, email: phone ? null : u.email || null, phone: phone ? phoneDigits(u.email!.split("@")[0]) : null,
       loginType: phone ? "phone" : u.provider === "google" ? "google" : "email",
       name: u.name || (u.userMetadata?.full_name as string) || "", team: isAdmin(u),
+      verified: isAdmin(u) ? { by: "team", at: 0 } : verified.get(u.id) || null,
       createdAt: u.createdAt || null, lastSignInAt: u.lastSignInAt || null, confirmed: phone || !!u.confirmedAt || u.provider === "google",
       contact: c ? { owner: c.owner, phone: c.phone } : null,
       profile: pr ? { name: pr.name, avatar: pr.avatar ? avatarUrl(u.id, pr.avatar) : null } : null,
@@ -141,7 +144,7 @@ export default async (req: Request, context?: Context) => {
     const [cfg, posts, evening, weekly, tip] = await Promise.all([getSocial(), recentPosts(), compose("evening"), compose("weekly"), compose("tip")]);
     return { settings: cfg, connected: fbConfigured(), posts, preview: { evening, weekly, tip } };
   };
-  const everything = async () => { const [settings, nakamals, accts, log, keys, social] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys(), socialState()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any), social }; };
+  const everything = async () => { const [settings, nakamals, accts, log, keys, social] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys(), socialState()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any), social, smsOn: smsConfigured() }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
   if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
 
@@ -198,22 +201,25 @@ export default async (req: Request, context?: Context) => {
     if (action === "resetPin") {
       if (!existing) return bad("No phone login uses that number yet.", 404);
       await identityAdmin.updateUser(existing.id, { password: pin, app_metadata: { ...(existing.appMetadata || {}), ...PHONE_MARK } });
-      await logEvent(user, "team", "resetPin", { detail: phone });
-      return reply({ login: { phone, pin, reset: true } });
+      const sms = smsConfigured() ? (await sendSms(phone, pinText(pin))).ok : false;
+      await logEvent(user, "team", "resetPin", { detail: phone + (sms ? " · sent by SMS" : "") });
+      return reply({ login: { phone, pin, reset: true, sms } });
     }
     if (existing) return bad("That phone number already has a login. Use Reset PIN instead.");
     const name = clean(body?.name, 80);
     if (name.length < 2) return bad("Enter the owner's name.");
     const created = await identityAdmin.createUser({ email, password: pin, data: { user_metadata: { full_name: name, phone }, app_metadata: { ...PHONE_MARK } } });
     await s.setJSON("contact/" + created.id, { owner: name, phone, at: Date.now() });
+    await setVerified(created.id, "team");
     // Optionally hand them an existing nakamal right away.
     const give = clean(body?.id, 60);
     if (give) {
       const n = await getNak(give);
       if (n) await s.setJSON("nak/" + give, { ...n, owner: created.id, ownerEmail: undefined, updatedAt: Date.now() });
     }
-    await logEvent(user, "team", "createLogin", { detail: phone + " (" + name + ")" });
-    return reply({ login: { phone, pin } });
+    const sms = smsConfigured() ? (await sendSms(phone, `Killim Light: login blong yu / your login:\nFon: ${phone}\nPIN: ${pin}\nkillim-light.netlify.app/owner`)).ok : false;
+    await logEvent(user, "team", "createLogin", { detail: phone + " (" + name + ")" + (sms ? " · sent by SMS" : "") });
+    return reply({ login: { phone, pin, sms } });
   }
 
   if (action === "assign") {
@@ -277,7 +283,7 @@ export default async (req: Request, context?: Context) => {
     for (const n of naks.values()) {
       const live = !!statuses.get(n.id)?.approved;
       if (onlyLive && !live) continue;
-      const next = { ...n, light: body.light, lightAt: now, updatedAt: now };
+      const next = { ...n, light: body.light, lightAt: now, lightBy: "team", updatedAt: now };
       await s.setJSON("nak/" + n.id, next); changed++;
       changes.push([n, next]);
     }
@@ -373,12 +379,19 @@ export default async (req: Request, context?: Context) => {
     }
     for (const u of users) {
       await deleteImages(`avatar/${u.id}/`);
-      await Promise.all([s.delete("contact/" + u.id), s.delete("profile/" + u.id)]);
+      await Promise.all([s.delete("contact/" + u.id), s.delete("profile/" + u.id), unsetVerified(u.id)]);
       await identityAdmin.deleteUser(u.id);
     }
     await logEvent(user, "team", "deleteAllOwners", { detail: `${users.length} owner account${users.length === 1 ? "" : "s"} deleted, ${freed} nakamal${freed === 1 ? "" : "s"} unclaimed` });
     await rebuildIndex();
     return reply({ deletedAccounts: users.length, unclaimed: freed });
+  }
+  if (action === "verifyAccount") {
+    const uid = clean(body?.userId, 80);
+    if (!uid) return bad("Choose an account.");
+    body?.verified ? await setVerified(uid, "team") : await unsetVerified(uid);
+    await logEvent(user, "team", "verifyAccount", { detail: (clean(body?.label, 120) || uid) + (body?.verified ? " verified" : " unverified") });
+    return reply();
   }
   if (action === "editAccount" || action === "setPassword" || action === "deleteAccount") {
     const uid = clean(body?.userId, 80);
@@ -401,8 +414,10 @@ export default async (req: Request, context?: Context) => {
       if (isPhoneLogin(target.email)) {
         const pin = newPin();
         await identityAdmin.updateUser(uid, { password: pin, app_metadata: { ...(target.appMetadata || {}), ...PHONE_MARK } });
-        await logEvent(user, "team", "resetPin", { detail: phoneDigits(target.email!.split("@")[0]) });
-        return reply({ login: { phone: phoneDigits(target.email!.split("@")[0]), pin, reset: true } });
+        const ph = phoneDigits(target.email!.split("@")[0]);
+        const sms = smsConfigured() ? (await sendSms(ph, pinText(pin))).ok : false;
+        await logEvent(user, "team", "resetPin", { detail: ph + (sms ? " · sent by SMS" : "") });
+        return reply({ login: { phone: ph, pin, reset: true, sms } });
       }
       const pw = String(body?.password || "");
       if (pw.length < 8) return bad("The new password needs at least 8 characters.");
@@ -416,7 +431,7 @@ export default async (req: Request, context?: Context) => {
     const theirs = [...(await readAll<Nakamal>("nak/")).values()].filter((n) => n.owner === uid);
     for (const n of theirs) body?.deleteNakamals ? await removeNakamal(n.id) : await unassignNakamal(n);
     await deleteImages(`avatar/${uid}/`);
-    await Promise.all([s.delete("contact/" + uid), s.delete("profile/" + uid)]);
+    await Promise.all([s.delete("contact/" + uid), s.delete("profile/" + uid), unsetVerified(uid)]);
     await identityAdmin.deleteUser(uid);
     await rebuildIndex();
     await logEvent(user, "team", "deleteAccount", { detail: (isPhoneLogin(target.email) ? phoneDigits(target.email!.split("@")[0]) : target.email) + (theirs.length ? (body?.deleteNakamals ? " · nakamals deleted" : " · nakamals kept") : "") });
@@ -434,11 +449,12 @@ export default async (req: Request, context?: Context) => {
   } else if (action === "approve") {
     if (!st.visit?.visited) return bad("Tick “We visited” before approving.");
     await s.setJSON("status/" + id, { ...st, approved: true, approvedAt: Date.now() });
+    if (nak.owner) await setVerified(nak.owner, "team");
   } else if (action === "hide") {
     await s.setJSON("status/" + id, { ...st, approved: false });
   } else if (action === "light") {
     if (!["green", "amber", "closed"].includes(body?.light)) return bad("Choose a light.");
-    const next = { ...nak, light: body.light, lightAt: Date.now(), updatedAt: Date.now() };
+    const next = { ...nak, light: body.light, lightAt: Date.now(), lightBy: "team", updatedAt: Date.now() };
     await s.setJSON("nak/" + id, next);
     // Same as when the owner does it: history, "kava ready" alerts and developers' webhooks.
     await rebuildIndex();
@@ -474,7 +490,7 @@ export default async (req: Request, context?: Context) => {
     if (r.error) return bad(r.error);
     const due = dueEvent(r.schedule, Date.now());
     const next: any = { ...nak, schedule: r.schedule, schedLast: due?.key, schedConfirmed: !!r.schedule!.enabled, updatedAt: Date.now() };
-    if (due && allDayToday(r.schedule)) { next.light = "green"; next.lightAt = Date.now(); }
+    if (due && allDayToday(r.schedule)) { next.light = "green"; next.lightAt = Date.now(); next.lightBy = "schedule"; }
     await s.setJSON("nak/" + id, next);
     if (next.light !== nak.light) await afterLightChange(nak, next);
   } else if (action === "unassign") {

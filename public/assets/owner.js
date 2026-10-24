@@ -29,8 +29,14 @@ function paintWho() {
   $('out').onclick = signOut;
 }
 
+// The Killim Light WhatsApp number (when set up), for "send VERIFY".
+let waNum = null;
+KL.api('/api/mapconfig').then(c => { waNum = c.waNumber || null; if (state && !state.verified) render(); }).catch(() => {});
+// Coming back from WhatsApp after sending VERIFY: check again by itself.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state && !state.verified) reload(); });
+
 async function reload() {
-  try { state = await authed('/api/owner'); try { const c = localStorage.getItem('kl-claimed'); if (c && state.nakamals.some(n => n.name === c)) localStorage.removeItem('kl-claimed'); } catch {} render(); }
+  try { state = await authed('/api/owner'); setTimeout(flushPending, 500); try { const c = localStorage.getItem('kl-claimed'); if (c && state.nakamals.some(n => n.name === c)) localStorage.removeItem('kl-claimed'); } catch {} render(); }
   catch (e) { box.innerHTML = `<div class="card"><h3>${esc(t('loadFail'))}</h3><p class="hint">${esc(e.message)}</p><button class="btn" id="retry">${esc(t('tryAgain'))}</button></div>`; $('retry').onclick = reload; }
 }
 async function act(body, okText, msgId) {
@@ -54,12 +60,14 @@ function render() {
   if (ed) return renderEdit(ed);
   editId = null;
   box.innerHTML = `${claimNote()}
-    <div class="ohead"><h3>${esc(t('myNakamals'))}</h3><button class="btn" type="button" id="addBtn">${esc(t('addNakamal'))}</button></div>
+    ${state.verified ? '' : verifyCard()}
     ${mine.map(ownerCard).join('')}
+    <div class="row-btns"><button class="btn" type="button" id="addBtn">${esc(t('addNakamal'))}</button></div>
     <details class="card" ${showProfile ? 'open' : ''} id="profBox"><summary><b>${esc(t('myProfile'))}</b></summary>${profileCard()}</details>
     <p class="hint">${esc(t('staleNote'))}</p>
     <p class="hint"><a class="link" href="?quick=1">${esc(t('quickOpen'))}</a> · ${esc(t('quickTip'))}</p>`;
   $('addBtn').onclick = () => { adding = true; reg = null; render(); scrollTo({ top: 0 }); };
+  wireVerify();
   $('profBox').ontoggle = e => { showProfile = e.target.open; };
   wireProfile();
   wireCards(mine);
@@ -73,6 +81,10 @@ async function renderClaim() {
   let n = null;
   try { n = (await KL.api('/api/nakamals')).items.find(x => x.id === id); } catch {}
   if (!n) { claimId = null; return render(); }
+  if (!state.verified) {
+    box.innerHTML = `<div class="card"><h3>${esc(t('claimTitle', { name: n.name }))}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}<p class="hint">${esc(t('verifyClaim'))}</p></div>${verifyCard()}`;
+    return wireVerify();
+  }
   const needContact = !(state.contact && state.contact.owner && state.contact.phone);
   box.innerHTML = `<div class="card"><h3>${esc(t('claimTitle', { name: n.name }))}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}
     <p class="hint">${esc(t('claimHint'))}</p>
@@ -98,12 +110,12 @@ async function renderClaim() {
 
 // ---------- one-tap light page ----------
 function renderQuick(mine) {
-  box.innerHTML = `<div class="card"><h3>⚡ ${esc(t('quickTitle'))}</h3><p class="hint">${esc(t('quickHint'))}</p></div>
+  box.innerHTML = `${state.verified ? '' : verifyCard()}<div class="card"><h3>⚡ ${esc(t('quickTitle'))}</h3><p class="hint">${esc(t('quickHint'))}</p></div>
     ${mine.map(n => `<div class="card ocard" data-card="${esc(n.id)}">
       <div class="top" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3 style="flex:1">${esc(n.name)}</h3>${pill(n)}</div>
       ${lightButtons(n)}<div class="line">${esc(updatedLine(n))}</div></div>`).join('')}
     <a class="btn" href="?">${esc(t('fullPage'))}</a>`;
-  wireCards(mine);
+  wireCards(mine); wireVerify();
 }
 
 const pill = n => n.approved ? `<span class="pill l-${n.shown}"><span class="dot">${LIGHT[n.shown].sym}</span>${esc(t('customersSee', { light: LIGHT[n.shown].label }))}</span>`
@@ -116,11 +128,11 @@ const lightButtons = (n, big) => `<div class="lights ${big ? '' : 'small'}" role
 function wireCards(mine) {
   box.querySelectorAll('[data-card]').forEach(card => {
     const id = card.dataset.card, n = mine.find(x => x.id === id);
-    card.querySelectorAll('[data-light]').forEach(b => b.onclick = async () => {
-      const l = b.dataset.light;
-      card.querySelectorAll('[data-light]').forEach(x => x.setAttribute('aria-pressed', x === b));
-      if (await act({ action: 'light', id, light: l }, n.approved ? t('lightSaved', { name: n.name, light: LIGHT[l].label }) : t('savedPending'))) render();
-    });
+    card.querySelectorAll('[data-light]').forEach(b => b.onclick = () => setLight(n, b.dataset.light));
+    const sp = card.querySelector('[data-speak]');
+    if (sp) sp.onclick = () => speak(t('speakHelp'));
+    const more = card.querySelector('[data-more]');
+    if (more) more.ontoggle = () => { more.open ? moreOpen.add(id) : moreOpen.delete(id); };
     const note = card.querySelector('[data-note]');
     if (note) note.onclick = async () => { if (await act({ action: 'note', id, note: clean(card.querySelector('input').value, 120) }, t('noteSaved'))) render(); };
     card.querySelectorAll('[data-edit]').forEach(ed => ed.onclick = () => { editId = id; editTab = ed.dataset.edit || 'photos'; render(); scrollTo({ top: 0 }); });
@@ -129,24 +141,98 @@ function wireCards(mine) {
   });
 }
 
+// ---------- verify the owner's phone before the first light or a claim ----------
+function verifyCard() {
+  const ph = state.myPhone;
+  return `<div class="card verifycard"><h3>☎ ${esc(t('verifyTitle'))}</h3>
+    <p class="hint">${esc(t('verifyWhy'))}</p>
+    ${ph ? `<p>${esc(t('verifyYourNumber'))} <b>${esc(ph)}</b></p>`
+      : `<div class="prow2"><input class="field" id="vPhone" type="tel" inputmode="numeric" maxlength="20" placeholder="555 1234" aria-label="${esc(t('pinPhone'))}"><button class="btn" type="button" id="vSave">${esc(t('save'))}</button></div><p class="hint">${esc(t('verifyAddPhone'))}</p>`}
+    ${waNum && ph ? `<a class="btn big wabtn" href="https://wa.me/${encodeURIComponent(waNum)}?text=${encodeURIComponent('VERIFY')}" target="_blank" rel="noopener">🟢 ${esc(t('verifyWa'))}<small>${esc(t('verifyWaSub'))}</small></a>` : ''}
+    <p class="hint">${esc(waNum ? t('verifyTeamToo') : t('verifyTeam'))}</p>
+    <button class="btn" type="button" id="vCheck">${esc(t('verifyCheck'))}</button></div>`;
+}
+function wireVerify() {
+  if ($('vCheck')) $('vCheck').onclick = reload;
+  if ($('vSave')) $('vSave').onclick = async () => {
+    const phone = clean($('vPhone').value, 30);
+    const owner = (state.contact && state.contact.owner) || (state.profile && state.profile.name) || (state.user && state.user.name) || 'Owner';
+    if (await act({ action: 'contact', contact: { owner, phone } }, t('saved'))) reload();
+  };
+}
+
+// ---------- one tap = done: big confirmation, and taps made with no signal are sent later ----------
+const moreOpen = new Set();
+const PENDING = 'kl-pending-lights';
+const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING) || '{}'); } catch { return {}; } };
+const writePending = p => { try { localStorage.setItem(PENDING, JSON.stringify(p)); } catch {} };
+const pendingLight = id => readPending()[id];
+function confirmTap(l, n) {
+  try { navigator.vibrate && navigator.vibrate(80); } catch {}
+  document.querySelector('.tapok')?.remove();
+  const el = document.createElement('div'); el.className = 'tapok l-' + l; el.setAttribute('role', 'status');
+  el.innerHTML = `<div><span class="bulbbig l-${l}"></span><b>✓ ${esc(n.approved ? t('customersSee', { light: LIGHT[l].label }) : t('savedPending'))}</b></div>`;
+  document.body.appendChild(el); el.onclick = () => el.remove();
+  setTimeout(() => el.remove(), 2200);
+}
+async function setLight(n, l) {
+  if (!state.verified) { toast(t('verifyFirst')); const v = document.querySelector('.verifycard'); if (v) { v.scrollIntoView({ behavior: 'smooth', block: 'center' }); v.classList.add('flash'); setTimeout(() => v.classList.remove('flash'), 1200); } return; }
+  const local = { ...n, light: l, shown: l, lightAt: Date.now(), lightBy: 'owner' };
+  const i = state.nakamals.findIndex(x => x.id === n.id); if (i >= 0) state.nakamals[i] = local;
+  confirmTap(l, n);
+  try {
+    const r = await authed('/api/owner', { action: 'light', id: n.id, light: l });
+    if (r.nakamals) state.nakamals = r.nakamals.map(x => ({ ...x, stats: (state.nakamals.find(y => y.id === x.id) || {}).stats }));
+    const p = readPending(); delete p[n.id]; writePending(p);
+  } catch (e) {
+    if (e && e.status) { toast(e.message); } else { const p = readPending(); p[n.id] = { light: l, at: Date.now() }; writePending(p); }
+  }
+  render();
+}
+// Send taps that waited for signal, as soon as the phone is back online.
+async function flushPending() {
+  const p = readPending(); const ids = Object.keys(p); if (!ids.length || !state) return;
+  for (const id of ids) {
+    try { await authed('/api/owner', { action: 'light', id, light: p[id].light }); delete p[id]; } catch (e) { if (e && e.status) delete p[id]; }
+  }
+  writePending(p); if (!Object.keys(p).length) { toast(t('offlineSent')); reload(); }
+}
+addEventListener('online', flushPending);
+setInterval(flushPending, 30000);
+function speak(text) {
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'en-AU'; u.rate = .85; speechSynthesis.speak(u); } catch {}
+}
+
 function ownerCard(n) {
   const phone = (state.contact || {}).phone;
   const wait = n.visitDate ? t('waitDate', { date: n.visitDate }) : phone ? t('waitCall', { phone }) : t('waitCallNo');
   return `<div class="card ocard" data-card="${esc(n.id)}">
+    ${n.photos && n.photos.length ? `<img class="ocover" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
     <div class="ocardtop">
-      ${n.photos && n.photos.length ? `<img class="othumb" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
-      <div style="flex:1;min-width:0"><h3>${esc(n.name)}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}</div>${pill(n)}
+      <div class="ocardname"><h3>${esc(n.name)}</h3>${n.area ? `<div class="line">${esc(n.area)}</div>` : ''}</div>
+      ${'speechSynthesis' in window ? `<button class="speak" type="button" data-speak aria-label="${esc(t('speakBtn'))}" title="${esc(t('speakBtn'))}">🔊</button>` : ''}
     </div>
     ${n.approved ? '' : `<p class="hint pendingnote">${esc(wait)}</p>`}
     ${n.reports ? `<p class="hint pendingnote">${esc(t('reportsNow', { n: n.reports.count, what: reportWhat(n.reports) }))}</p>` : ''}
     <p class="lightq">${esc(t('lightQ'))}</p>
     ${lightButtons(n, true)}
-    <div class="line">${esc(updatedLine(n))}${n.approved ? ' · ' + esc(t('viewsWeek', { n: n.viewsWeek || 0 })) : ''}</div>
+    ${pendingLight(n.id) ? `<p class="offline-wait">☁️ ${esc(t('offlineWait'))}</p>` : ''}
+    <div class="line">${n.approved ? pill(n) + ' ' : ''}${esc(updatedLine(n))}</div>
+    <details class="omore" ${moreOpen.has(n.id) ? 'open' : ''} data-more><summary>${esc(t('moreThings'))}</summary>
+    ${n.approved ? `<p class="hint">${esc(t('viewsWeek', { n: n.viewsWeek || 0 }))}</p>` : ''}
     <div class="prow2"><input class="field" id="note-${esc(n.id)}" maxlength="120" value="${esc(n.note || '')}" placeholder="${esc(t('notePh'))}" aria-label="${esc(t('noteAria'))}">
       <button class="btn" type="button" data-note>${esc(t('saveNote'))}</button></div>
     ${n.schedule && n.schedule.enabled ? `<p class="hint">${esc(t('schedNow', { txt: schedText(n.schedule.days) }))}</p>` : ''}
     ${(n.specials || []).length ? `<p class="hint">📣 ${n.specials.map(sp => esc(sp.title)).join(' · ')}</p>` : ''}
-    <div class="row-btns"><button class="btn" type="button" data-edit="specials">${esc(t('postSpecial'))}</button><button class="btn" type="button" data-edit="schedule">${esc(t('schedBtn'))}</button><button class="btn" type="button" data-edit="stats">${esc(t('seeStats'))}</button><button class="btn" type="button" data-edit="photos">✎ ${esc(t('editPage'))}</button>${n.approved ? `<button class="btn" type="button" data-share title="${esc(t('shareMineHint'))}">↗ ${esc(t('shareMine'))}</button>` : ''}</div>
+    ${(n.photos || []).length ? '' : `<div class="photonudge"><span aria-hidden="true">📷</span><div><b>${esc(t('nudgeTitle'))}</b><span class="hint">${esc(t('nudgeText'))}</span></div><button class="btn go" type="button" data-edit="photos">${esc(t('addPhotos'))}</button></div>`}
+    <div class="otiles">
+      <button type="button" class="otile" data-edit="photos"><span aria-hidden="true">📷</span>${esc(t('tilePhotos', { n: (n.photos || []).length }))}</button>
+      <button type="button" class="otile" data-edit="specials"><span aria-hidden="true">📣</span>${esc(t('tileSpecial'))}</button>
+      <button type="button" class="otile" data-edit="schedule"><span aria-hidden="true">⏰</span>${esc(t('tileSchedule'))}</button>
+      <button type="button" class="otile" data-edit="stats"><span aria-hidden="true">📊</span>${esc(t('tileStats'))}</button>
+      <button type="button" class="otile" data-edit="details"><span aria-hidden="true">✎</span>${esc(t('editPage'))}</button>
+      ${n.approved ? `<button type="button" class="otile" data-share title="${esc(t('shareMineHint'))}"><span aria-hidden="true">↗</span>${esc(t('shareMine'))}</button>` : ''}
+    </div></details>
   </div>`;
 }
 
