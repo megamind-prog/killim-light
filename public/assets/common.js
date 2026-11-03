@@ -166,6 +166,36 @@ const readSchedGrid = f => [0, 1, 2, 3, 4, 5, 6].map(i => {
   return !q('day').checked ? null : q('all').checked ? { allDay: true } : { on: q('on').value, off: q('off').value };
 });
 
+// ---------- outbox: taps feel instant; the server is told in the background ----------
+// Each action is saved on the phone first, sent straight away, and retried when the signal comes back
+// (every 20 seconds and on "online"), so nothing is lost on weak or no signal. Actions with the same key
+// replace each other (only the latest light, rating or report is sent).
+const OUTBOX = 'kl-outbox';
+const readBox = () => { try { return JSON.parse(localStorage.getItem(OUTBOX) || '[]'); } catch { return []; } };
+const writeBox = b => { try { localStorage.setItem(OUTBOX, JSON.stringify(b.slice(-50))); } catch {} };
+let flushing = false;
+async function flushOutbox() {
+  if (flushing || !readBox().length) return; flushing = true;
+  let sent = 0;
+  try {
+    for (const job of readBox()) {
+      try { await api(job.path, job.body); sent++; writeBox(readBox().filter(j => j.key !== job.key)); }
+      catch (e) {
+        if (e && e.status) writeBox(readBox().filter(j => j.key !== job.key));   // the server said no: don't retry
+        else break;                                                                // no signal: try again later
+      }
+    }
+  } finally { flushing = false; if (sent) document.dispatchEvent(new CustomEvent('kl-outbox', { detail: { sent } })); }
+}
+function sendLater(path, body, key) {
+  writeBox([...readBox().filter(j => j.key !== key), { path, body, key, at: Date.now() }]);
+  flushOutbox();
+}
+const outboxCount = () => readBox().length;
+addEventListener('online', flushOutbox);
+setInterval(() => { if (readBox().length) flushOutbox(); }, 20000);
+setTimeout(flushOutbox, 1500);
+
 // ---------- sharing ----------
 const shareUrl = n => location.origin + BASE + 'n/' + encodeURIComponent(n.id);
 async function shareNakamal(n) {
@@ -404,6 +434,6 @@ function makePicker(el, textEl, start, locBtn) {
 if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 
 window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
-  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, shareNakamal, shareUrl, shareTonight, schedText, schedGridHtml, wireSchedGrid, readSchedGrid,
+  priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, sendLater, flushOutbox, outboxCount, shareNakamal, shareUrl, shareTonight, schedText, schedGridHtml, wireSchedGrid, readSchedGrid,
   makeMap, makePicker, pinIcon, REGIONS, osmIndex: OSM_INDEX };
 })();

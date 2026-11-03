@@ -29,7 +29,22 @@ async function reload(quiet) {
     if ($('retry')) $('retry').onclick = () => reload();
   }
 }
+// Simple, common changes show straight away; the server is told in the background.
+function quickPatch(body) {
+  const n = body.id && list.find(x => x.id === body.id);
+  if (body.action === 'light' && n) { Object.assign(n, { light: body.light, shown: body.light, lightAt: Date.now(), lightBy: 'team' }); return true; }
+  if (body.action === 'clearReports' && n) { n.reports = null; return true; }
+  if (body.action === 'verifyAccount') { const a = accounts.find(x => x.id === body.userId); if (a) { a.verified = body.verified ? { by: 'team', at: Date.now() } : null; return true; } }
+  return false;
+}
+const typing = () => { const a = document.activeElement; return !!a && box.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName); };
 async function act(body, okText) {
+  if (quickPatch(body)) {
+    toast(okText || 'Saved'); render();
+    authed('/api/admin', body).then(r => { take(r); if (!typing()) render(); })
+      .catch(e => { toast(e.message || 'That change didn’t save. Check your connection.'); reload(true); });
+    return { ok: true };
+  }
   try {
     const r = await authed('/api/admin', body);
     take(r);

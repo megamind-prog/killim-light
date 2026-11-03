@@ -289,22 +289,22 @@ $('list').addEventListener('submit', e => {
   const ta = f.querySelector('textarea');
   rate(id, stars, ta ? clean(ta.value, 280) : (myRatings[id] && myRatings[id].text) || '');
 });
-async function rate(id, stars, text) {
-  try {
-    const r = await api('/api/rate', { id, device, stars, text });
-    if (stars) myRatings[id] = { stars, text }; else delete myRatings[id];
-    store.set('kl-ratings', myRatings);
-    delete picked[id];
-    if (r.item) nakamals.set(id, r.item);
-    document.activeElement?.blur?.();
-    renderList(); renderMap();
-    toast(stars ? t('thanksRating') : t('ratingRemoved'));
-  } catch (err) { setMsg('rmsg-' + id, err.message, false); }
+// Ratings and reports show at once; the outbox sends them in the background (and later if there's no signal).
+function rate(id, stars, text) {
+  if (stars) myRatings[id] = { stars, text }; else delete myRatings[id];
+  store.set('kl-ratings', myRatings);
+  delete picked[id];
+  document.activeElement?.blur?.();
+  renderList(); renderMap();
+  toast(stars ? t('thanksRating') : t('ratingRemoved'));
+  KL.sendLater('/api/rate', { id, device, stars, text }, 'rate-' + id);
 }
-async function report(id, kind, item) {
-  try { await api('/api/report', { id, device, kind }); item.querySelector('.reportbox').hidden = true; toast(t('reportThanks')); load(); }
-  catch (err) { toast(err.message); }
+function report(id, kind, item) {
+  item.querySelector('.reportbox').hidden = true; toast(t('reportThanks'));
+  KL.sendLater('/api/report', { id, device, kind }, 'report-' + id + '-' + kind);
 }
+// When the outbox has sent things, refresh the lights quietly.
+document.addEventListener('kl-outbox', () => { if (!KL.outboxCount()) load(); });
 
 // ---------- favourite alerts (web push) ----------
 async function toggleAlert(id) {

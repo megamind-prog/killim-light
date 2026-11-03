@@ -289,6 +289,7 @@ const T = {
   speakBtn:       { bi: 'Lisin', en: 'Listen' },
   speakHelp:      { bi: 'Tapem grin: kava i redi. Tapem yelo: kava i klosap finis. Tapem red: i klos.', en: 'Tap green: kava ready. Tap yellow: kava running low. Tap red: closed.' },
   moreThings:     { bi: 'Moa samting ▾', en: 'More ▾' },
+  sendingNow:     { bi: 'I stap sendem…', en: 'Sending…' },
   offlineWait:    { bi: 'No gat netwok. Bae laet i go taem netwok i kam bak.', en: 'No signal. The light will be sent when the signal comes back.' },
   offlineSent:    { bi: 'Netwok i kam bak: laet i go finis ✓', en: 'Signal is back: light sent ✓' },
   pinForgot:      { bi: 'Mi fogetem PIN o pasword', en: 'I forgot my PIN or password' },

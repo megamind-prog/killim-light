@@ -180,12 +180,16 @@ async function setLight(n, l) {
   const local = { ...n, light: l, shown: l, lightAt: Date.now(), lightBy: 'owner' };
   const i = state.nakamals.findIndex(x => x.id === n.id); if (i >= 0) state.nakamals[i] = local;
   confirmTap(l, n);
+  // Show the new light at once; mark it as waiting until the server has it.
+  { const p = readPending(); p[n.id] = { light: l, at: Date.now(), sending: true }; writePending(p); }
+  render();
   try {
     const r = await authed('/api/owner', { action: 'light', id: n.id, light: l });
     if (r.nakamals) state.nakamals = r.nakamals.map(x => ({ ...x, stats: (state.nakamals.find(y => y.id === x.id) || {}).stats }));
     const p = readPending(); delete p[n.id]; writePending(p);
   } catch (e) {
-    if (e && e.status) { toast(e.message); } else { const p = readPending(); p[n.id] = { light: l, at: Date.now() }; writePending(p); }
+    if (e && e.status) { toast(e.message); const p = readPending(); delete p[n.id]; writePending(p); reload(); return; }
+    const p = readPending(); p[n.id] = { light: l, at: Date.now() }; writePending(p);
   }
   render();
 }
@@ -216,7 +220,7 @@ function ownerCard(n) {
     ${n.reports ? `<p class="hint pendingnote">${esc(t('reportsNow', { n: n.reports.count, what: reportWhat(n.reports) }))}</p>` : ''}
     <p class="lightq">${esc(t('lightQ'))}</p>
     ${lightButtons(n, true)}
-    ${pendingLight(n.id) ? `<p class="offline-wait">☁️ ${esc(t('offlineWait'))}</p>` : ''}
+    ${pendingLight(n.id) ? (pendingLight(n.id).sending ? `<p class="hint">⏳ ${esc(t('sendingNow'))}</p>` : `<p class="offline-wait">☁️ ${esc(t('offlineWait'))}</p>`) : ''}
     <div class="line">${n.approved ? pill(n) + ' ' : ''}${esc(updatedLine(n))}</div>
     <details class="omore" ${moreOpen.has(n.id) ? 'open' : ''} data-more><summary>${esc(t('moreThings'))}</summary>
     ${n.approved ? `<p class="hint">${esc(t('viewsWeek', { n: n.viewsWeek || 0 }))}</p>` : ''}
