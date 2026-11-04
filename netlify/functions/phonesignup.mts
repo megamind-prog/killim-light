@@ -4,15 +4,8 @@
 import type { Config, Context } from "@netlify/functions";
 import { admin as identityAdmin } from "@netlify/identity";
 import { bad, clean, foreignOrigin, json, logEvent, phoneDigits, phoneLoginEmail, PHONE_MARK, store } from "../lib/data.mts";
-
-// 6 to 8 numbers, and not an easy one to guess.
-function pinProblem(pin: string) {
-  if (!/^\d{6,8}$/.test(pin)) return "The PIN must be 6 to 8 numbers.";
-  if (/^(\d)\1+$/.test(pin)) return "Choose a PIN that isn't the same number repeated.";
-  const up = "0123456789012", down = "9876543210987";
-  if (up.includes(pin) || down.includes(pin)) return "Choose a PIN that isn't counting up or down (like 123456).";
-  return null;
-}
+import { phonePassword, pinProblem } from "../lib/pin.mts";
+import { secured } from "../lib/security.mts";
 
 async function exists(email: string) {
   for (let page = 1; page <= 50; page++) {
@@ -23,13 +16,13 @@ async function exists(email: string) {
   return false;
 }
 
-export default async (req: Request, context?: Context) => {
+export default secured(async (req: Request, context?: Context) => {
   if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   let body: any; try { body = await req.json(); } catch { return bad("Fill in the form."); }
   const name = clean(body?.name, 80), phone = phoneDigits(body?.phone), pin = String(body?.pin ?? "").trim();
   if (name.length < 2) return bad("Type your name.");
   if (phone.length !== 7) return bad("Type your Vanuatu phone number (7 numbers).");
-  const problem = pinProblem(pin);
+  const problem = pinProblem(pin, phone);
   if (problem) return bad(problem);
   // At most 5 new accounts an hour from one network address.
   const s = store(), now = Date.now();
@@ -39,10 +32,14 @@ export default async (req: Request, context?: Context) => {
   const email = phoneLoginEmail(phone);
   if (await exists(email)) return bad("This phone number already has an account. Log in, or tap “I forgot my PIN or password”.", 409);
   await s.setJSON("signup-ip/" + ip, [...tries, now]);
-  const created = await identityAdmin.createUser({ email, password: pin, data: { user_metadata: { full_name: name, phone, via: "self" }, app_metadata: { ...PHONE_MARK } } });
+  const created = await identityAdmin.createUser({ email, password: await phonePassword(phone, pin), data: { user_metadata: { full_name: name, phone, via: "self" }, app_metadata: { ...PHONE_MARK } } });
   await s.setJSON("contact/" + created.id, { owner: name, phone, at: now });
   await logEvent(null, "owner", "phoneSignup", { detail: phone + " (" + name + ")", who: "☎ " + phone });
+  // The page logs in next through /api/pinlogin (the stored password is derived from the PIN, see lib/pin.mts).
   return json({ ok: true });
-};
+});
 
-export const config: Config = { path: "/api/phonesignup", method: ["POST"] };
+export const config: Config = {
+  path: "/api/phonesignup", method: ["POST"],
+  rateLimit: { action: "rate_limit", aggregateBy: ["ip", "domain"], windowSize: 60, windowLimit: 5 },
+};

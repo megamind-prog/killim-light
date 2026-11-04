@@ -34,6 +34,6 @@ export async function sendSms(phoneDigits: string, text: string): Promise<{ ok: 
   }
 }
 
-// 8-digit PINs from a secure random source.
-export const newPin = () => String(10000000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000000));
+// 8-digit PINs from a secure random source (never an easy one): see pin.mts.
+export { newPin } from "./pin.mts";
 export const pinText = (pin: string) => `Killim Light: PIN niu blong yu: ${pin}\nYour new PIN: ${pin}\nNo givim long narafala man. Don't share it.`;

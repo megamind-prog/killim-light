@@ -371,10 +371,9 @@ function renderRegister(hasOthers) {
       e.preventDefault();
       Object.assign(d, readKava(), { prices: readPrices() });
       const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
-      const body = { action: 'register', name: d.name, area: d.area, about: d.about, hours: d.hours, lat: d.lat, lng: d.lng, kavaFrom: d.kavaFrom, strength: d.strength, closeTime: d.closeTime };
+      const body = { action: 'register', name: d.name, area: d.area, about: d.about, hours: d.hours, lat: d.lat, lng: d.lng, kavaFrom: d.kavaFrom, strength: d.strength, closeTime: d.closeTime, prices: d.prices };
       if (reg.contact) body.contact = reg.contact;
       const r = await act(body, null, 'regMsg');
-      if (r && d.prices.length) await act({ action: 'prices', id: r.id, prices: d.prices }, null, 'regMsg');
       btn.disabled = false;
       if (r) { reg.id = r.id; reg.step = 3; toast(t('submitted')); render(); scrollTo({ top: 0 }); }
     };

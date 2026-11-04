@@ -9,6 +9,9 @@ import { allDayToday, dueEvent, notUpdated, sanitizeSchedule } from "../lib/sche
 import osmNakamals from "../lib/osm-nakamals.json" with { type: "json" };
 import { usageOf, type ApiKey } from "../lib/dev.mts";
 import { pinText, sendSms, smsConfigured } from "../lib/sms.mts";
+import { newPin, phonePassword } from "../lib/pin.mts";
+import { backfillAccess, grantNakamal, revokeNakamal } from "../lib/access.mts";
+import { secured } from "../lib/security.mts";
 import { compose, fbConfigured, getSocial, postNow, recentPosts, sanitizeSocial, type SocialKind } from "../lib/social.mts";
 import { admin as identityAdmin, type User } from "@netlify/identity";
 import {
@@ -58,8 +61,6 @@ async function findUserByEmail(email: string) {
   }
   return null;
 }
-// 8-digit PINs from a secure random source: 100 million possibilities.
-const newPin = () => String(10000000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000000));
 
 async function allUsers(): Promise<User[]> {
   const out: User[] = [];
@@ -132,9 +133,10 @@ async function unassignNakamal(n: Nakamal) {
   const c = n.owner ? ((await s.get("contact/" + n.owner, { type: "json" })) as Contact | null) : null;
   await s.setJSON("status/" + n.id, { ...st, contact: c ? { owner: c.owner, phone: c.phone } : st.contact });
   await s.setJSON("nak/" + n.id, { ...n, owner: null, ownerEmail: undefined, updatedAt: Date.now() });
+  await revokeNakamal(n.owner, n.id);
 }
 
-export default async (req: Request, context?: Context) => {
+export default secured(async (req: Request, context?: Context) => {
   if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
@@ -146,7 +148,11 @@ export default async (req: Request, context?: Context) => {
   };
   const everything = async () => { const [settings, nakamals, accts, log, keys, social] = await Promise.all([getSettings(), overview(), accounts(), readLog(), devKeys(), socialState()]); return { settings, nakamals, accounts: accts, log, devkeys: keys, osm: osmStatus(nakamals as any), social, smsOn: smsConfigured() }; };
   const reply = async (extra: Record<string, unknown> = {}) => json({ ok: true, ...extra, ...(await everything()) });
-  if (req.method === "GET") return json({ me: user.email, myId: user.id, ...(await everything()) });
+  if (req.method === "GET") {
+    // First visit after the owner-access change: give existing owners access to their approved nakamals.
+    try { await backfillAccess(); } catch (e) { console.error("backfillAccess", e); }
+    return json({ me: user.email, myId: user.id, ...(await everything()) });
+  }
 
   let body: any;
   try { body = await req.json(); } catch { return bad("Send JSON."); }
@@ -200,7 +206,7 @@ export default async (req: Request, context?: Context) => {
     const existing = await findUserByEmail(email);
     if (action === "resetPin") {
       if (!existing) return bad("No phone login uses that number yet.", 404);
-      await identityAdmin.updateUser(existing.id, { password: pin, app_metadata: { ...(existing.appMetadata || {}), ...PHONE_MARK } });
+      await identityAdmin.updateUser(existing.id, { password: await phonePassword(phone, pin), app_metadata: { ...(existing.appMetadata || {}), ...PHONE_MARK } });
       const sms = smsConfigured() ? (await sendSms(phone, pinText(pin))).ok : false;
       await logEvent(user, "team", "resetPin", { detail: phone + (sms ? " · sent by SMS" : "") });
       return reply({ login: { phone, pin, reset: true, sms } });
@@ -208,14 +214,18 @@ export default async (req: Request, context?: Context) => {
     if (existing) return bad("That phone number already has a login. Use Reset PIN instead.");
     const name = clean(body?.name, 80);
     if (name.length < 2) return bad("Enter the owner's name.");
-    const created = await identityAdmin.createUser({ email, password: pin, data: { user_metadata: { full_name: name, phone }, app_metadata: { ...PHONE_MARK } } });
+    const created = await identityAdmin.createUser({ email, password: await phonePassword(phone, pin), data: { user_metadata: { full_name: name, phone }, app_metadata: { ...PHONE_MARK } } });
     await s.setJSON("contact/" + created.id, { owner: name, phone, at: Date.now() });
     await setVerified(created.id, "team");
     // Optionally hand them an existing nakamal right away.
     const give = clean(body?.id, 60);
     if (give) {
       const n = await getNak(give);
-      if (n) await s.setJSON("nak/" + give, { ...n, owner: created.id, ownerEmail: undefined, updatedAt: Date.now() });
+      if (n) {
+        await s.setJSON("nak/" + give, { ...n, owner: created.id, ownerEmail: undefined, updatedAt: Date.now() });
+        await revokeNakamal(n.owner, give);
+        await grantNakamal(created.id, give);
+      }
     }
     const sms = smsConfigured() ? (await sendSms(phone, `Killim Light: login blong yu / your login:\nFon: ${phone}\nPIN: ${pin}\nkillim-light.netlify.app/owner`)).ok : false;
     await logEvent(user, "team", "createLogin", { detail: phone + " (" + name + ")" + (sms ? " · sent by SMS" : "") });
@@ -234,7 +244,11 @@ export default async (req: Request, context?: Context) => {
     if (!moving.length) return bad("Nothing to move.");
     const oldOwners = new Set(moving.map((n) => n.owner));
     const targetEmail = isPhoneLogin(target.email) ? undefined : target.email;
-    for (const n of moving) await s.setJSON("nak/" + n.id, { ...n, owner: target.id, ownerEmail: targetEmail, updatedAt: Date.now() });
+    for (const n of moving) {
+      await s.setJSON("nak/" + n.id, { ...n, owner: target.id, ownerEmail: targetEmail, updatedAt: Date.now() });
+      if (n.owner !== target.id) await revokeNakamal(n.owner, n.id);
+      await grantNakamal(target.id, n.id);
+    }
     if (!(await s.get("contact/" + target.id))) {
       let c: any = null;
       for (const o of oldOwners) if (o && (c = await s.get("contact/" + o, { type: "json" }))) break;
@@ -268,6 +282,7 @@ export default async (req: Request, context?: Context) => {
       visit: approve ? { visited: true, visitedAt: now, date: vuDate(now), notes: "Added by the team" } : {},
     } satisfies Status);
     if (owner && (cOwner || cPhone) && !(await s.get("contact/" + owner.id))) await s.setJSON("contact/" + owner.id, { owner: cOwner, phone: cPhone, at: now });
+    if (owner) await grantNakamal(owner.id, id);
     await rebuildIndex();
     await logEvent(user, "team", "addNakamal", { id, name: nak.name, detail: approve ? "on the map" : "waiting" });
     return reply({ added: id });
@@ -372,6 +387,7 @@ export default async (req: Request, context?: Context) => {
       const st = await getStatus(n.id);
       if (n.owner) {
         await s.setJSON("nak/" + n.id, { ...n, owner: null, ownerEmail: undefined, ownerUsedLight: false, claimedAt: undefined, updatedAt: Date.now() });
+        if (!users.some((u) => u.id === n.owner)) await revokeNakamal(n.owner, n.id);
         freed++;
       }
       // Pending "this is mine" requests go too. Contact details the team typed for a listing are kept.
@@ -413,8 +429,8 @@ export default async (req: Request, context?: Context) => {
     if (action === "setPassword") {
       if (isPhoneLogin(target.email)) {
         const pin = newPin();
-        await identityAdmin.updateUser(uid, { password: pin, app_metadata: { ...(target.appMetadata || {}), ...PHONE_MARK } });
         const ph = phoneDigits(target.email!.split("@")[0]);
+        await identityAdmin.updateUser(uid, { password: await phonePassword(ph, pin), app_metadata: { ...(target.appMetadata || {}), ...PHONE_MARK } });
         const sms = smsConfigured() ? (await sendSms(ph, pinText(pin))).ok : false;
         await logEvent(user, "team", "resetPin", { detail: ph + (sms ? " · sent by SMS" : "") });
         return reply({ login: { phone: ph, pin, reset: true, sms } });
@@ -450,6 +466,8 @@ export default async (req: Request, context?: Context) => {
     if (!st.visit?.visited) return bad("Tick “We visited” before approving.");
     await s.setJSON("status/" + id, { ...st, approved: true, approvedAt: Date.now() });
     if (nak.owner) await setVerified(nak.owner, "team");
+    // Approving the nakamal approves its owner for it: they may now edit it (app_metadata.nakamals).
+    await grantNakamal(nak.owner, id);
   } else if (action === "hide") {
     await s.setJSON("status/" + id, { ...st, approved: false });
   } else if (action === "light") {
@@ -473,6 +491,7 @@ export default async (req: Request, context?: Context) => {
     }
   } else if (action === "delete") {
     await removeNakamal(id);
+    await revokeNakamal(nak.owner, id);
   } else if (action === "approveClaim" || action === "rejectClaim") {
     const c = (st as any).claim;
     if (!c) return bad("No claim on this nakamal.");
@@ -481,6 +500,7 @@ export default async (req: Request, context?: Context) => {
       const target = users.find((u) => u.id === c.userId);
       if (!target) return bad("That login doesn't exist any more.", 404);
       await s.setJSON("nak/" + id, { ...nak, owner: target.id, ownerEmail: isPhoneLogin(target.email) ? undefined : target.email, updatedAt: Date.now(), claimedAt: Date.now() });
+      await grantNakamal(target.id, id);
     }
     const { claim, ...rest } = st as any;
     await s.setJSON("status/" + id, rest);
@@ -516,6 +536,6 @@ export default async (req: Request, context?: Context) => {
   await logEvent(user, "team", action, { id, name: nak.name, detail });
   await rebuildIndex();
   return reply();
-};
+});
 
 export const config: Config = { path: "/api/admin", method: ["GET", "POST"] };

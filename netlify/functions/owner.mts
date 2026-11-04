@@ -10,8 +10,27 @@ import {
 } from "../lib/data.mts";
 import { allDayToday, dueEvent, sanitizeSchedule } from "../lib/schedule.mts";
 import { afterLightChange, announceSpecial, isUpcoming, MAX_SPECIALS, sanitizeSpecial, type HistoryDay, type Special } from "../lib/events.mts";
+import { editableIds } from "../lib/access.mts";
+import { secured } from "../lib/security.mts";
 
+// The light values the app uses everywhere (map, list, team page, schedules).
 const LIGHTS = ["green", "amber", "closed"] as const;
+const NOTE_MAX = 300;
+const PRICE_MAX_VT = 100000;           // no kava price is more than 100,000 vatu
+const ID_RE = /^[A-Za-z0-9_-]{1,60}$/;
+
+// Prices stay as the owner typed them ("100", "100 vt"), but each one must be a whole number of vatu, 1 to 100,000.
+function checkPrices(list: unknown): { error?: string; prices?: ReturnType<typeof sanitizePrices> } {
+  if (list != null && !Array.isArray(list)) return { error: "Send the prices as a list." };
+  if (Array.isArray(list) && list.length > 8) return { error: "You can list up to 8 prices." };
+  const prices = sanitizePrices(list);
+  for (const p of prices) {
+    const m = /^\s*(?:vt|vatu)?\s*(\d{1,3}(?:[ ,.]\d{3})*|\d+)\s*(?:vt|vatu)?\.?\s*$/i.exec(p.price);
+    const vt = m ? Number(m[1].replace(/[ ,.]/g, "")) : NaN;
+    if (!Number.isInteger(vt) || vt < 1 || vt > PRICE_MAX_VT) return { error: `“${p.item}”: the price must be a number of vatu from 1 to 100,000 (like 100 or 100 vt).` };
+  }
+  return { prices };
+}
 
 async function mine(userId: string, withStats = false) {
   const [naks, statuses, reports, views] = await Promise.all([readAll<Nakamal>("nak/"), readAll<Status>("status/"), readAll<Report>("report/"), readAll<{ count: number }>("views/")]);
@@ -62,7 +81,7 @@ async function statsFor(id: string, views: Map<string, { count: number }>) {
   };
 }
 
-export default async (req: Request, context: Context) => {
+export default secured(async (req: Request, context: Context) => {
   if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
@@ -115,11 +134,14 @@ export default async (req: Request, context: Context) => {
   if (action === "register") {
     const r = sanitizeDetails(body);
     if (r.error) return bad(r.error);
+    // Prices come with the registration (the new listing can't be edited until the team approves it).
+    const pr = checkPrices(body?.prices);
+    if (pr.error) return bad(pr.error);
     if ((await mine(user.id)).length >= 20) return bad("You can manage up to 20 nakamals from one login.");
     const now = Date.now(), id = newId();
     const nak: Nakamal = {
       id, owner: user.id, ownerEmail: phoneLogin ? undefined : user.email, ...r.details!, ...sanitizeKava(body),
-      prices: [], light: "closed", lightAt: null, note: "", createdAt: now, updatedAt: now,
+      prices: pr.prices!, light: "closed", lightAt: null, note: "", createdAt: now, updatedAt: now,
     };
     await s.setJSON("nak/" + id, nak);
     await s.setJSON("status/" + id, { approved: false } satisfies Status);
@@ -145,28 +167,44 @@ export default async (req: Request, context: Context) => {
     return json({ ok: true, claimed: cn.name, nakamals: await mine(user.id) });
   }
 
-  // Everything else acts on one of the owner's own nakamals.
-  const id = clean(body?.id, 60);
-  const nak = id ? await getNak(id) : null;
-  if (!nak || nak.owner !== user.id) return bad("That nakamal isn't yours.", 403);
+  // Everything else edits one nakamal. Checked on the server before every write:
+  //  - the id is well formed and the nakamal exists,
+  //  - it is this login's nakamal (nak.owner), and
+  //  - the Killim Light team approved this login for it: the id is in the login's app_metadata.nakamals,
+  //    read fresh from Netlify Identity (app_metadata can't be changed by the user; user_metadata and ids sent
+  //    by the browser are never enough on their own).
+  const id = typeof body?.id === "string" ? body.id.trim() : "";
+  if (!ID_RE.test(id)) return bad("Unknown nakamal.", 404);
+  const nak = await getNak(id);
+  if (!nak) return bad("Unknown nakamal.", 404);
+  if (nak.owner !== user.id) return bad("That nakamal isn't yours.", 403);
+  let allowed: Set<string>;
+  try { allowed = await editableIds(user.id); }
+  catch (e) { console.error("owner: couldn't read app_metadata", e); return bad("Couldn't check your login right now. Please try again.", 503); }
+  if (!allowed.has(id)) return bad("The Killim Light team hasn't approved you for this nakamal yet. They will after their visit.", 403);
   const patch: Partial<Nakamal> = {};
   if (action === "update") {
     const r = sanitizeDetails(body);
     if (r.error) return bad(r.error);
     Object.assign(patch, r.details);
   } else if (action === "prices") {
-    patch.prices = sanitizePrices(body?.prices);
+    const r = checkPrices(body?.prices);
+    if (r.error) return bad(r.error);
+    patch.prices = r.prices!;
   } else if (action === "kava") {
     Object.assign(patch, sanitizeKava({ kavaFrom: nak.kavaFrom, strength: nak.strength, closeTime: nak.closeTime, ...body }));
   } else if (action === "light") {
     if (!verified) return needVerify();
-    if (!LIGHTS.includes(body?.light)) return bad("Choose a light.");
+    if (typeof body?.light !== "string" || !(LIGHTS as readonly string[]).includes(body.light)) return bad("Choose a light.");
     patch.light = body.light; patch.lightAt = Date.now(); (patch as any).lightBy = "owner";
     (patch as any).ownerUsedLight = true;
   } else if (action === "note") {
-    patch.note = clean(body?.note, 120);
+    const note = String(body?.note ?? "").trim();
+    if (note.length > NOTE_MAX) return bad(`The note can be up to ${NOTE_MAX} characters.`);
+    patch.note = note;
   } else if (action === "removePhoto") {
     const pid = clean(body?.photoId, 60);
+    if (!(nak.photos || []).some((p) => p.id === pid)) return bad("That photo isn't on this nakamal.", 404);
     patch.photos = (nak.photos || []).filter((p) => p.id !== pid);
     await imgStore().delete(`photo/${id}/${pid}`);
   } else if (action === "remove") {
@@ -200,7 +238,9 @@ export default async (req: Request, context: Context) => {
     await rebuildIndex();
     return json({ ok: true, nakamals: await mine(user.id) });
   } else if (action === "unspecial") {
-    await s.delete(`special/${id}/${clean(body?.specialId, 40)}`);
+    const sid = clean(body?.specialId, 40);
+    if (!ID_RE.test(sid) || !(await s.get(`special/${id}/${sid}`))) return bad("That special doesn't exist.", 404);
+    await s.delete(`special/${id}/${sid}`);
     await rebuildIndex();
     return json({ ok: true, nakamals: await mine(user.id) });
   } else {
@@ -214,6 +254,10 @@ export default async (req: Request, context: Context) => {
   // Alert phones that follow this nakamal, without making the owner wait.
   if (action === "light" || (action === "schedule" && nak.light !== next.light)) await afterLightChange(nak, next, context?.waitUntil?.bind(context));
   return json({ ok: true, nakamals: await mine(user.id) });
-};
+});
 
-export const config: Config = { path: "/api/owner", method: ["GET", "POST"] };
+// GET reads the owner's own data; every change is a POST.
+export const config: Config = {
+  path: "/api/owner", method: ["GET", "POST"],
+  rateLimit: { action: "rate_limit", aggregateBy: ["ip", "domain"], windowSize: 60, windowLimit: 30 },
+};

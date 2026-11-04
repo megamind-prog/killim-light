@@ -6,10 +6,12 @@ import {
   MAX_PHOTOS, avatarUrl, bad, currentUser, deleteImages, getNak, getStatus, imgStore, json, photoUrl,
   rebuildIndex, logEvent, foreignOrigin, isPhoneLogin, isTeamPhoneLogin, store, type Photo, type Profile,
 } from "../lib/data.mts";
+import { editableIds } from "../lib/access.mts";
+import { secured } from "../lib/security.mts";
 
 const MAX_BYTES = 3 * 1024 * 1024;
 
-export default async (req: Request) => {
+export default secured(async (req: Request) => {
   if (foreignOrigin(req)) return bad("Not allowed from another website.", 403);
   const user = await currentUser();
   if (!user) return bad("Please log in.", 401);
@@ -38,17 +40,24 @@ export default async (req: Request) => {
     const id = String(url.searchParams.get("id") || "");
     const nak = id ? await getNak(id) : null;
     if (!nak || nak.owner !== user.id) return bad("That nakamal isn't yours.", 403);
+    // Same rule as /api/owner: the team must have approved this login for this nakamal (app_metadata.nakamals),
+    // except while the owner's own new listing is still waiting for the team's visit (its photos help that visit,
+    // and nothing is public until the team approves it).
+    const live = (await getStatus(id)).approved;
+    let allowed = false;
+    try { allowed = (await editableIds(user.id)).has(id); } catch (e) { console.error("upload: couldn't read app_metadata", e); return bad("Couldn't check your login right now. Please try again.", 503); }
+    if (!allowed && live) return bad("The Killim Light team hasn't approved you for this nakamal yet.", 403);
     const photos = nak.photos || [];
     if (photos.length >= MAX_PHOTOS) return bad(`You can show up to ${MAX_PHOTOS} photos. Remove one first.`);
     await imgs.set(`photo/${id}/${photo.id}`, buf.buffer as ArrayBuffer, { metadata: { type: "image/jpeg" } });
     await s.setJSON("nak/" + id, { ...nak, photos: [...photos, photo], updatedAt: Date.now() });
-    if ((await getStatus(id)).approved) await rebuildIndex();
+    if (live) await rebuildIndex();
     await logEvent(user, "owner", "addPhoto", { id, name: nak.name });
     return json({ ok: true, photo: { id: photo.id, url: photoUrl(id, photo) } });
   }
 
   return bad("Unknown upload.");
-};
+});
 
 export const config: Config = {
   path: "/api/upload", method: ["POST"],
