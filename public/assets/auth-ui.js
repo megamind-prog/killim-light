@@ -15,6 +15,13 @@ const toLogin = v => {
   return { email: `${d}@${PHONE_DOMAIN}`, phone: d.length >= 5 };
 };
 
+// Phone + PIN logins go through /api/pinlogin, which counts wrong PINs (5 wrong = locked for 15 minutes) and sets
+// the login cookies; the browser session is then picked up from those cookies.
+async function pinLogin(phone, pin) {
+  await KL.api('/api/pinlogin', { phone, pin });
+  return (await A.hydrateSession()) || (await A.getUser());
+}
+
 async function start({ box, allowSignup, title, intro, onUser }) {
   let settings = { providers: {}, disableSignup: false, autoconfirm: false }, waNum = null;
   try { settings = await A.getSettings(); } catch {}
@@ -95,7 +102,7 @@ async function start({ box, allowSignup, title, intro, onUser }) {
       setMsg('psMsg', t('loading'), true);
       try {
         await KL.api('/api/phonesignup', { name, phone, pin });
-        onUser(await A.login(toLogin(phone).email, pin));
+        onUser(await pinLogin(phone, pin));
       } catch (err) {
         btn.disabled = false;
         setMsg('psMsg', err.message || t('netError'), false);
@@ -196,11 +203,19 @@ async function start({ box, allowSignup, title, intro, onUser }) {
             <p>${t('checkEmailText', { email: esc(raw) })}</p><p class="hint">${esc(t('spam'))}</p>
             <button class="btn" type="button" id="backLogin">${esc(t('backToLogin'))}</button></div>`;
           $('backLogin').onclick = () => showForm('login', null, raw);
+        } else if (login.phone && !raw.includes('@')) {
+          onUser(await pinLogin(raw, pass));
         } else {
           onUser(await A.login(login.email, pass));
         }
       } catch (err) {
         btn.disabled = false;
+        // Phone + PIN: the server's own answer (wrong PIN, or locked for 15 minutes).
+        if (login.phone && !raw.includes('@') && mode !== 'signup' && err && err.status) {
+          setMsg('aMsg', err.status === 401 ? t('wrongLogin') : (err.message || t('loginFail')), false);
+          offer([['hPinReset', t('pinForgot'), true]]); $('hPinReset').onclick = () => showPinForgot(raw);
+          return;
+        }
         const m = errText(err);
         const code = err && (err.status || (err.cause && err.cause.status));
         if (code === 404) {

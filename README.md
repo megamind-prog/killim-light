@@ -18,7 +18,7 @@ New nakamals stay hidden until the Killim Light team has visited and approved th
 | `netlify/functions/` | The API: public list, ratings, reports, owner, team, uploads, pictures, open API, share links |
 | `netlify/lib/data.mts` | Shared data rules (storage layout, light logic, auto-close, reports) |
 
-Runs on Netlify: Functions + Blobs (storage) + Identity (logins). No other services.
+Runs on Netlify: Functions + Blobs (storage) + Identity (logins) + Database (wrong-PIN counter). No other services.
 
 ## Run your own copy
 
@@ -29,10 +29,13 @@ Runs on Netlify: Functions + Blobs (storage) + Identity (logins). No other servi
    - Optional: `FB_PAGE_ID`, `FB_PAGE_TOKEN` — lets the app post to a Facebook Page by itself (steps on `/chief` → Tools)
    - Optional: `WA_TOKEN`, `WA_PHONE_ID`, `WA_NUMBER`, `WA_VERIFY_TOKEN`, `WA_APP_SECRET` — Killim Light WhatsApp number (Meta Cloud API): owners send VERIFY to verify their number and PIN to get a new PIN; webhook at `/api/whatsapp`
    - Optional: `SMS_GATEWAY_USER`, `SMS_GATEWAY_PASS` (and `SMS_GATEWAY_URL`) — SMS Gateway for Android: texts PINs to owners
+   - `PIN_PEPPER` — a long random secret (at least 32 characters, e.g. from `openssl rand -base64 48`). Phone + PIN logins are stored as a keyed hash of the PIN, so PINs can only be tried through `/api/pinlogin`, which locks a number for 15 minutes after 5 wrong PINs. Set it once and never change it (changing it makes every phone owner reset their PIN).
    - Optional: `ESRI_API_KEY` — sharp satellite pictures (a public ArcGIS key limited to your site's addresses); without it the map uses free Sentinel-2 cloudless pictures
 
    Never put tokens or keys in the code: they belong in Netlify's environment variables only.
-3. In Netlify → Project → Identity: **Enable Identity**, keep registration **Open**, and turn on **Google** under external providers if you want it.
+3. In Netlify → Project → Identity: **Enable Identity**, set registration to **Invite only**, and leave external providers (Google etc.) **off**. Owners still make their own phone + PIN account on `/owner` (the server creates it), and the team invites email owners.
+4. Netlify Database (Data & Storage → Database) holds the wrong-PIN counter. It is created on the first deploy because `@netlify/database` is installed; the table comes from `netlify/database/migrations/`.
+5. Owners may only edit a nakamal the team approved them for: its id must be in the login's `app_metadata.nakamals` in Netlify Identity. Approving a nakamal, a claim, or assigning one on `/chief` does this by itself; by hand, open Identity → the user → edit `app_metadata` to e.g. `{ "nakamals": ["n123abc"] }` (keep the other keys there, like `killim_phone`).
 
 ## Open data
 

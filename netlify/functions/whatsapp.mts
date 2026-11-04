@@ -8,7 +8,7 @@
 import type { Config } from "@netlify/functions";
 import { admin as identityAdmin } from "@netlify/identity";
 import { logEvent, phoneDigits, phoneLoginEmail, PHONE_MARK, readAll, setVerified, store, type Contact } from "../lib/data.mts";
-import { newPin } from "../lib/sms.mts";
+import { newPin, phonePassword } from "../lib/pin.mts";
 import { sendWa, validSignature, waConfigured } from "../lib/whatsapp.mts";
 
 const SITE = () => (process.env.SITE_URL || process.env.URL || "https://killim-light.netlify.app").replace(/\/$/, "");
@@ -68,7 +68,7 @@ async function handle(from: string, text: string) {
   // Send first, change the PIN only if the message went: a failed message never locks the owner out.
   const pin = newPin();
   const sent = await sendWa(from, `Killim Light ✓ PIN niu / New PIN\nNamba fon / Phone: ${phone}\nPIN: ${pin}\n\nLogin long / Log in at ${SITE()}/owner\nNo givim PIN long narafala man. Don't share it.\nYu no askem? Yu save lego mesej ia. Didn't ask? You can ignore this, but use the new PIN next time.`);
-  if (sent.ok) await identityAdmin.updateUser(user.id, { password: pin, app_metadata: { ...(user.appMetadata || {}), ...PHONE_MARK } });
+  if (sent.ok) await identityAdmin.updateUser(user.id, { password: await phonePassword(phone, pin), app_metadata: { ...(user.appMetadata || {}), ...PHONE_MARK } });
   await logEvent(null, "owner", "pinReset", { detail: phone + " · by WhatsApp" + (sent.ok ? "" : " · reply failed: " + sent.error), who: "☎ " + phone });
 }
 

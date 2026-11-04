@@ -36,42 +36,24 @@
   to = "/terms.html"
   status = 200
 
-# Security headers for every response.
+# Security headers for every page and file.
+# The Content-Security-Policy lives only here (not repeated per page): when several rules match a path, Netlify
+# sends every matching value, and two CSP headers would both be enforced.
+# Only our own scripts may run on our pages (blocks injected scripts from stealing logins).
+# Netlify does NOT add these to function responses (/api/*, /img/*, /n/*): the functions set their own.
+# The embeddable map (/embed) is the one page other websites may frame: netlify/edge-functions/embed-headers.ts
+# gives it its own framing rules.
 [[headers]]
   for = "/*"
   [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "geolocation=(self), camera=(), microphone=(), payment=()"
-    Strict-Transport-Security = "max-age=31536000"
-
-# Only our own scripts may run on our pages (blocks injected scripts from stealing logins).
-[[headers]]
-  for = "/"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
-[[headers]]
-  for = "/index.html"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
-[[headers]]
-  for = "/developers*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
-[[headers]]
-  for = "/privacy*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
-[[headers]]
-  for = "/terms*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
-
-# The embeddable map may be shown inside any website.
-[[headers]]
-  for = "/embed*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors *"
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Resource-Policy = "same-origin"
+    Permissions-Policy = "geolocation=(self), camera=(), microphone=(), payment=(), usb=(), interest-cohort=(), browsing-topics=()"
 
 # The offline helper must always be checked for updates.
 [[headers]]
@@ -80,20 +62,36 @@
     Cache-Control = "no-cache"
     Service-Worker-Allowed = "/"
 
-# Only the team page and owner page should never appear inside someone else's site.
+# Owner page: never cached, never in search engines, never sends its address to other sites.
 [[headers]]
   for = "/owner*"
   [headers.values]
-    X-Frame-Options = "DENY"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+    Cache-Control = "no-store"
+    X-Robots-Tag = "noindex, nofollow"
+    Referrer-Policy = "no-referrer"
 
+# Team page.
 [[headers]]
   for = "/chief*"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
     Cache-Control = "no-store"
-    X-Frame-Options = "DENY"
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://tiles.maps.eox.at https://ibasemaps-api.arcgis.com; connect-src 'self'; frame-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+
+[[headers]]
+  for = "/developers*"
+  [headers.values]
+    X-Robots-Tag = "noindex"
+
+# Login and owner scripts: always fetched fresh, so a security fix reaches every phone straight away.
+[[headers]]
+  for = "/assets/auth*.js"
+  [headers.values]
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/assets/owner.js"
+  [headers.values]
+    Cache-Control = "no-store"
 
 [[headers]]
   for = "/assets/osm/*"
