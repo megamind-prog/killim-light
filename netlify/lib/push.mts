@@ -79,3 +79,35 @@ export async function notifySpecial(n: Nakamal, sp: { title: string; date: strin
   }));
   return sent;
 }
+
+// The 5 pm reminder for owners who asked for it: "Time for kava. Set your light."
+// Sent once a day, on the first run at or after 5 pm Vanuatu time, and only to owners who haven't set a light
+// themselves in the last 3 hours (and who aren't open 24 hours today).
+export async function remindOwners(now = Date.now()) {
+  if (!ready()) return 0;
+  const local = new Date(now + 11 * 3600e3);
+  if (local.getUTCHours() !== 17) return 0;
+  const s = store(), day = local.toISOString().slice(0, 10);
+  const meta = (await s.get("meta/remind", { type: "json" })) as { day?: string } | null;
+  if (meta && meta.day === day) return 0;
+  await s.setJSON("meta/remind", { day });
+  const subs = await readAll<{ sub: any; lang?: string }>("remind/");
+  if (!subs.size) return 0;
+  const naks = [...(await readAll<Nakamal>("nak/")).values()];
+  let sent = 0;
+  await Promise.all([...subs].map(async ([uid, v]) => {
+    const mine = naks.filter((n) => n.owner === uid);
+    const waiting = mine.filter((n) => {
+      const d = (n as any).schedule && (n as any).schedule.days && (n as any).schedule.days[local.getUTCDay()];
+      if (d && d.allDay) return false;
+      return !((n as any).lightBy === "owner" && n.lightAt && now - n.lightAt < 3 * 3600e3);
+    });
+    if (!waiting.length) return;
+    const en = v.lang === "en";
+    const title = en ? "Time for kava: set your light" : "Taem blong kava: setem laet blong yu";
+    const body = en ? `${waiting[0].name}: tap to tell customers if the kava is ready.` : `${waiting[0].name}: tajem blong talem long ol kastoma sapos kava i redi.`;
+    try { await webpush.sendNotification(v.sub, JSON.stringify({ title, body, url: "/owner" }), { TTL: 2 * 3600 }); sent++; }
+    catch (e: any) { if (e && (e.statusCode === 404 || e.statusCode === 410)) await s.delete("remind/" + uid); }
+  }));
+  return sent;
+}

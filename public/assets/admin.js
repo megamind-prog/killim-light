@@ -432,6 +432,7 @@ function fieldsHtml(n, c) {
     <div class="row">
       <label for="eHours">Opening hours<input class="field" id="eHours" maxlength="80" value="${esc(n.hours || '')}" placeholder="e.g. 5pm to 11pm"></label>
       <label for="eNote">Note on the page<input class="field" id="eNote" maxlength="120" value="${esc(n.note || '')}"></label></div>
+    <label for="eFacebook">Facebook page<input class="field" id="eFacebook" type="url" maxlength="200" value="${esc(n.facebook || '')}" placeholder="facebook.com/..."></label>
     <div class="row">
       <label for="eFrom">Kava from<select class="field" id="eFrom"><option value="">Not saying</option>${KAVA.map(i => `<option ${n.kavaFrom === i ? 'selected' : ''}>${esc(i)}</option>`).join('')}</select></label>
       <label for="eStr">Strength<select class="field" id="eStr"><option value="">Not saying</option>${['mild', 'medium', 'strong'].map(s => `<option value="${s}" ${n.strength === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></label>
@@ -449,7 +450,7 @@ function readFields() {
   const v = picker && picker.value;
   return {
     name: clean($('eName').value, 80), area: clean($('eArea').value, 80), about: clean($('eAbout').value, 400), hours: clean($('eHours').value, 80),
-    note: clean($('eNote').value, 120), kavaFrom: $('eFrom').value, strength: $('eStr').value, closeTime: $('eClose').value,
+    note: clean($('eNote').value, 120), facebook: clean($('eFacebook').value, 200), kavaFrom: $('eFrom').value, strength: $('eStr').value, closeTime: $('eClose').value,
     prices: $('ePrices').value.split('\n').map(l => { const i = l.lastIndexOf(':'); return i > 0 ? { item: clean(l.slice(0, i), 40), price: clean(l.slice(i + 1), 24) } : null; }).filter(p => p && p.item && p.price),
     contact: { owner: clean($('eOwner').value, 80), phone: clean($('ePhone').value, 30) },
     lat: v ? v.lat : null, lng: v ? v.lng : null,

@@ -1,6 +1,7 @@
 // /api/owner — a logged-in owner manages their own nakamals (any number of them, from one login).
 // GET  -> { user, isAdmin, phoneLogin, contact, profile, nakamals: [... with photos, reports and views] }
 // POST -> { action: register | update | prices | kava | light | note | removePhoto | remove | contact | profile | removeAvatar, ... }
+import { pushKey } from "../lib/push.mts";
 import type { Config, Context } from "@netlify/functions";
 import {
   avatarUrl, bad, clean, currentUser, deleteImages, deletePrefix, getNak, getStatus, imgStore, isAdmin, isPhoneLogin, json, newId,
@@ -85,12 +86,22 @@ export default async (req: Request, context: Context) => {
       user: { email: phoneLogin ? null : user.email, name: user.name || "" }, phoneLogin,
       isAdmin: isAdmin(user), contact, profile: await profileOf(), nakamals: await mine(user.id, true),
       verified, myPhone: myPhone.length >= 7 ? myPhone : null,
+      remind: !!(await s.get("remind/" + user.id, { type: "json" })), pushKey: pushKey(),
     });
   }
 
   let body: any;
   try { body = await req.json(); } catch { return bad("Send JSON."); }
   const action = String(body?.action || "");
+
+  // The 5 pm reminder: "set your light". One phone per owner; switching it on again replaces the old phone.
+  if (action === "remindOn" || action === "remindOff") {
+    if (action === "remindOff") { await s.delete("remind/" + user.id); return json({ ok: true, remind: false }); }
+    const sub = body?.subscription;
+    if (!sub || typeof sub.endpoint !== "string" || !/^https:\/\//.test(sub.endpoint) || sub.endpoint.length > 600 || !sub.keys) return bad("This phone can't get reminders.");
+    await s.setJSON("remind/" + user.id, { sub: { endpoint: sub.endpoint, keys: { p256dh: clean(sub.keys.p256dh, 200), auth: clean(sub.keys.auth, 100) } }, lang: body?.lang === "en" ? "en" : "bi", at: Date.now() });
+    return json({ ok: true, remind: true });
+  }
 
   if (action === "profile" || action === "removeAvatar") {
     const prev = ((await s.get("profile/" + user.id, { type: "json" })) as Profile | null) || { name: user.name || "", avatar: null, updatedAt: 0 };

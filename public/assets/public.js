@@ -68,7 +68,7 @@ function popupHtml(n) {
   const l = lightOf(n);
   return `<div class="pop l-${l}"><h3>${esc(n.name)}</h3>${n.claimed === false && n.schedule && !n.lightConfirmed ? `<span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span>`
     : `<span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].label}</span>
-    <div class="line">${esc(updatedLine(n))}</div>`}
+    <div class="line">${KL.freshHtml(n)}</div>`}
     ${n.note ? `<div class="note">${esc(n.note)}</div>` : ''}
     <div class="popbtns"><button class="btn go" type="button" data-route="${esc(n.id)}">➜ ${esc(t('directions'))}</button>
     <button class="btn" type="button" data-pop="${esc(n.id)}">${esc(t('details'))}</button></div></div>`;
@@ -97,7 +97,7 @@ function renderMap() {
       });
       markers.set(id, m);
     } else { m.setLatLng([n.lat, n.lng]); m.setIcon(icon); }
-    if (close) { if (!m.getPopup()) m.bindPopup('', { autoPanPaddingBottomRight: [20, phone() ? 220 : 20] }); m.setPopupContent(popupHtml(n)); }
+    if (close) { if (!m.getPopup()) m.bindPopup('', { autoPanPaddingTopLeft: [56, 64], autoPanPaddingBottomRight: [20, phone() ? 220 : 20] }); m.setPopupContent(popupHtml(n)); }
     else if (m.getPopup()) { m.closePopup(); m.unbindPopup(); }
     m.setZIndexOffset(close ? (l === 'green' ? 1000 : l === 'amber' ? 500 : 0) : 0);
   }
@@ -140,7 +140,8 @@ osmIndex().then(ix => {
 // ---------- list ----------
 let pendingList = false;
 const inRegion = n => region === 'all' || islandOf(n) === region;
-function renderList() {
+let lastOrder = null;
+function renderList(keep) {
   const rank = { green: 0, amber: 1, reported: 2, stale: 3, closed: 4 };
   const all = [...nakamals.values()], here = all.filter(inRegion);
   const items = here.filter(n => {
@@ -153,7 +154,17 @@ function renderList() {
     if (filter === 'specials') { const a = A.specials[0], b = B.specials[0]; return (a.date + a.from).localeCompare(b.date + b.from); }
     return rank[lightOf(A)] - rank[lightOf(B)] || A.name.localeCompare(B.name);
   });
+  // While someone is reading down the list, new lights must not shuffle it under their finger:
+  // keep the order they see and offer a "sort again" button instead.
+  const natural = items.map(n => n.id).join(',');
+  if (keep && lastOrder) {
+    const pos = new Map(lastOrder.map((id, i) => [id, i]));
+    items.sort((A, B) => (pos.has(A.id) ? pos.get(A.id) : 1e6) - (pos.has(B.id) ? pos.get(B.id) : 1e6));
+  }
+  lastOrder = items.map(n => n.id);
+  $('orderChip').hidden = lastOrder.join(',') === natural;
   const ready = here.filter(n => lightOf(n) === 'green').length;
+  KL.shell3d($('heroShell'), 'hero', ready ? 'green' : here.some(n => lightOf(n) === 'amber') ? 'amber' : 'closed');
   $('headline').textContent = !loaded ? t('loading') : ready === 0 ? t('readyNone') : ready === 1 ? t('readyOne') : t('readyNow', { n: ready });
   $('headline').classList.toggle('none', loaded && ready === 0);
   $('subline').textContent = !loaded ? '' : region === 'all' ? t('readyOfAll', { b: here.length, n: here.length }) : t('readyOf', { b: here.length, n: here.length, r: islandName(region) });
@@ -178,12 +189,12 @@ function itemHtml(n) {
         <span class="ititle"><span class="name">${esc(n.name)}</span></span>
         ${where ? `<span class="imeta">${esc(where)}</span>` : ''}
         ${n.claimed === false && n.schedule && !n.lightConfirmed ? `<span class="istate"><span class="pill l-stale"><span class="dot"></span>${esc(usualLine(n))}</span></span>`
-          : `<span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span><span class="imeta">${esc(updatedLine(n))}</span></span>`}
+          : `<span class="istate"><span class="pill"><span class="dot">${LIGHT[l].sym}</span>${LIGHT[l].short}</span>${KL.freshHtml(n)}</span>`}
         ${n.note ? `<span class="inote">${esc(n.note)}</span>` : ''}
         ${(n.specials || []).slice(0, filter === 'specials' ? 3 : 1).map(sp => `<span class="ispecial">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${filter === 'specials' && sp.text ? ` · ${esc(sp.text)}` : ''}</span>`).join('')}
         ${facts.length ? `<span class="ifacts">${facts.map(f => `<span>${esc(f)}</span>`).join('')}</span>` : ''}
       </span>
-      ${n.photos && n.photos[0] ? `<img class="thumbimg" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
+      ${n.photos && n.photos[0] && !KL.prefs.lite() ? `<img class="thumbimg" src="${esc(n.photos[0].url)}" alt="" loading="lazy">` : ''}
     </button>
     <div class="iactions">
       <button class="btn go" type="button" data-act="route">➜ ${esc(t('directions'))}</button>
@@ -198,7 +209,7 @@ function itemHtml(n) {
 function detailsHtml(n, st, ps) {
   const mine = myRatings[n.id];
   return `<div class="details">
-    ${n.photos && n.photos.length ? `<div class="gallery" aria-label="Photos">${n.photos.map((p, i) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${i + 1}" loading="lazy"></a>`).join('')}</div>` : ''}
+    ${n.photos && n.photos.length && !KL.prefs.lite() ? `<div class="gallery" aria-label="Photos">${n.photos.map((p, i) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${i + 1}" loading="lazy"></a>`).join('')}</div>` : ''}
     ${n.host ? `<div class="profile"><div class="avatar">${n.host.avatar ? `<img src="${esc(n.host.avatar)}" alt="">` : '<span aria-hidden="true">👤</span>'}</div><div><h4>${esc(t('host'))}</h4><div class="note">${esc(n.host.name || t('theOwner'))}</div></div></div>` : ''}
     ${(n.specials || []).length ? `<div><h4>${esc(t('tabSpecials'))}</h4>${n.specials.map(sp => `<div class="spline">${sp.kind === 'event' ? '🎶' : '📣'} <b>${esc(sp.title)}</b> · ${esc(spWhen(sp))}${sp.to ? '–' + esc(sp.to) : ''}${sp.text ? `<div class="hint">${esc(sp.text)}</div>` : ''}</div>`).join('')}</div>` : ''}
     ${n.about ? `<p class="note">${esc(n.about)}</p>` : ''}
@@ -212,6 +223,7 @@ function detailsHtml(n, st, ps) {
     ${n.claimed === false ? `<p class="hint">${esc(t('notConfirmed'))} <a class="link" href="${BASE}owner?claim=${encodeURIComponent(n.id)}">${esc(t('claimLink'))}</a></p>` : ''}
     <div class="row-btns">
       <button class="btn" type="button" data-act="alert" aria-pressed="${alerts.has(n.id)}">${esc(alerts.has(n.id) ? t('alertOn') : t('alertMe'))}</button>
+      ${n.facebook ? `<a class="btn fbpage" href="${esc(n.facebook)}" target="_blank" rel="noopener nofollow">${esc(t('fbOpen'))}</a>` : ''}
     </div>
     <div><h4>${esc(t('ratings'))}${st.count ? ` · ${esc(t('ratingsFrom', { avg: st.avg.toFixed(1), n: st.count }))}` : ''}</h4>
       ${settings.comments && st.recent.length ? st.recent.map(r => `<div class="review"><div><span class="stars">${starsText(r.stars)}</span></div>
@@ -503,10 +515,19 @@ paintArea();
 // ---------- install as an app ----------
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').hidden = false; });
-$('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $('installBtn').hidden = true; };
+const doInstall = async () => { $('installNudge').hidden = true; if (!installEvt) return; installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $('installBtn').hidden = true; };
+$('installBtn').onclick = doInstall; $('installYes').onclick = doInstall;
+$('installNo').onclick = () => { $('installNudge').hidden = true; store.set('kl-install-no', Date.now()); };
+// A friendly nudge, only from the second visit, only after the lights have loaded, and not again for a month after "Not now".
+const visits = store.get('kl-visits', 0) + 1; store.set('kl-visits', visits);
+setTimeout(() => { if (installEvt && loaded && !offline && visits >= 2 && Date.now() - store.get('kl-install-no', 0) > 30 * 864e5) $('installNudge').hidden = false; }, 8000);
+// Low data switch
+const paintLite = () => { $('liteBtn').textContent = t(KL.prefs.lite() ? 'liteOn' : 'liteOff'); };
+paintLite();
+$('liteBtn').onclick = () => { KL.prefs.setLite(!KL.prefs.lite()); location.reload(); };
 
 // ---------- language ----------
-langButton(() => { renderList(); renderMap(); paintBanner(); paintIslands(); paintArea(); setSheet(sheet.dataset.state); });
+langButton(() => { paintLite(); paintLive(); renderList(); renderMap(); paintBanner(); paintIslands(); paintArea(); setSheet(sheet.dataset.state); });
 applyStatic();
 
 // ---------- live data: refresh every minute; keep the last copy on the phone ----------
@@ -516,7 +537,11 @@ function paintBanner() {
   b.hidden = !offline;
   if (offline) b.textContent = loaded ? t('offline', { ago: ago(built) }) : '';
 }
-function take(d) {
+let changedIds = [], lastLoad = 0;
+function take(d, live) {
+  // Which lights changed since the last look (only for live updates, not the copy kept on the phone).
+  changedIds = [];
+  if (live && loaded) for (const n of d.items) { const old = nakamals.get(n.id); if (old && lightOf(old) !== lightOf(n)) changedIds.push(n.id); }
   nakamals = new Map(d.items.map(n => [n.id, n]));
   settings = d.settings || settings; built = d.built || Date.now(); loaded = true;
 }
@@ -526,13 +551,13 @@ let deepDone = false;
 async function load() {
   try {
     const d = await api('/api/nakamals');
-    take(d); offline = false;
+    take(d, true); offline = false; lastLoad = Date.now();
     store.set('kl-last', { built: d.built, settings: d.settings, items: d.items });
   } catch {
     offline = true;
     if (!loaded) $('list').innerHTML = `<div class="empty">${esc(t('offlineNone'))}</div>`;
   }
-  paintBanner(); paintIslands(); renderMap(); renderList(); paintHint();
+  paintBanner(); paintIslands(); renderMap(); renderList(sheet.scrollTop > 40 || !!openId); paintHint(); paintLive(); showChanges();
   // Opened from a shared link (/?n=<id>) or an alert: open that nakamal once.
   const want = new URLSearchParams(location.search).get('n') || (location.hash.startsWith('#n-') ? location.hash.slice(3) : '');
   if (want && !deepDone && nakamals.has(want)) {
@@ -547,7 +572,33 @@ if (new URLSearchParams(location.search).get('near') === '1') findMe(true);
 setSheet('peek');
 renderMap(); renderList();
 load();
-setInterval(() => { if (!document.hidden) load(); else renderList(); }, 60000);
+// Live feel without wasting data: look for new lights every 30 seconds while the page is open and in use,
+// once a minute when nobody has touched it for 3 minutes, and not at all while it is in the background.
+let lastTouch = Date.now();
+['pointerdown', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, () => { lastTouch = Date.now(); }, { passive: true, capture: true }));
+setInterval(() => {
+  if (document.hidden) return;
+  if (Date.now() - lastTouch < 180000 || Date.now() - lastLoad >= 60000) load(); else renderList(true);
+}, 30000);
+function paintLive() {
+  const el = $('liveLine'); if (!loaded) return;
+  el.hidden = false; el.classList.toggle('off', offline);
+  const s = Math.max(0, Math.round((Date.now() - (lastLoad || built)) / 1000));
+  $('liveText').textContent = offline ? t('liveOff') : s < 15 ? t('liveNow') : s < 90 ? t('liveSec', { n: Math.round(s / 5) * 5 }) : t('liveMin', { n: Math.round(s / 60) });
+}
+setInterval(paintLive, 5000);
+// A light just changed: its pin and its row pulse once; a favourite turning green also gets a short message.
+function showChanges() {
+  const ids = changedIds; changedIds = [];
+  if (!ids.length) return;
+  for (const id of ids) {
+    const m = markers.get(id), pin = m && m.getElement(), row = document.getElementById('nk-' + id);
+    [pin, row].forEach(el => { if (!el) return; el.classList.remove('justchanged'); void el.offsetWidth; el.classList.add('justchanged'); setTimeout(() => el.classList.remove('justchanged'), 2600); });
+  }
+  const fav = ids.map(id => nakamals.get(id)).find(n => n && favs.has(n.id) && lightOf(n) === 'green');
+  if (fav) toast(`★ ${fav.name}: ${LIGHT.green.label}`);
+}
+$('orderChip').onclick = () => { renderList(); sheet.scrollTop = 0; };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 // Leaflet needs to know when its box changes size (rotating a phone, resizing a window).
 addEventListener('resize', () => map.invalidateSize());

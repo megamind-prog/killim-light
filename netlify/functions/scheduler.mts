@@ -5,6 +5,7 @@ import { logEvent, readAll, rebuildIndex, store, type Nakamal } from "../lib/dat
 import { afterLightChange } from "../lib/events.mts";
 import { allDayToday, dueEvent, scheduleActive, REFRESH_MS, type Schedule } from "../lib/schedule.mts";
 import { runSocial } from "../lib/social.mts";
+import { remindOwners } from "../lib/push.mts";
 
 export default async () => {
   const naks = await readAll<Nakamal & { schedule?: Schedule; schedLast?: string }>("nak/");
@@ -35,7 +36,9 @@ export default async () => {
   // Then the Facebook Page posts that are due (evening lights, Friday round-up, Monday tip).
   let posted: unknown[] = [];
   try { posted = await runSocial(now); } catch (e) { console.error("social", e); }
-  return new Response(JSON.stringify({ changed, posted }), { headers: { "content-type": "application/json" } });
+  let reminded = 0;
+  try { reminded = await remindOwners(now); } catch (e) { console.error("remind", e); }
+  return new Response(JSON.stringify({ changed, posted, reminded }), { headers: { "content-type": "application/json" } });
 };
 
 // Every 10 minutes: lights change on time within a few minutes, at half the cost of every 5.

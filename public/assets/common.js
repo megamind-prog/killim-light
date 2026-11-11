@@ -35,6 +35,9 @@ const ROAD = {
   str: { c: '#aad3df', w: [0, .6, .8, 1.1, 1.5, 2, 2.5, 3], min: 12 },
   rwy: { c: '#bbbbcc', w: [3, 5, 8, 14, 26, 50, 100, 200], min: 9 },
 };
+// Night colours for our own map: dark land and sea, roads a little lighter than the land.
+const NIGHT = { land: '#2b2219', sea: '#0f2329', casing: '#17110b',
+  c: { pri: '#b89a5e', sec: '#8f7d63', min: '#78684f', res: '#6a5c48', svc: '#5a4d3c', trk: '#8a6a3a', riv: '#1d4753', str: '#1d4753', rwy: '#4a4654' } };
 const ROAD_ORDER = ['riv', 'str', 'trk', 'svc', 'res', 'min', 'sec', 'pri', 'rwy'];
 const wAt = (st, z) => st.w[Math.max(0, Math.min(7, Math.round(z) - 11))] * (z < 11 ? 0.6 : 1);
 
@@ -294,13 +297,13 @@ function makeMap(el, opts = {}) {
   const showFills = () => base === 'killim';
   const keep = l => { fills.push(l); if (showFills()) l.addTo(m); return l; };
   // The whole country: OpenStreetMap coastline, simplified.
-  LAND_DATA().then(d => { if (d && document.body.contains(el)) { const l = keep(L.polygon(d, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 })); showFills() && l.bringToBack(); } });
+  LAND_DATA().then(d => { if (d && document.body.contains(el)) { const l = keep(L.polygon(d, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 })); showFills() && l.bringToBack(); tint(); } });
   const lab = (d, cls) => L.layerGroup(d.places.filter(p => cls.includes(p[0])).map(([kind, name, lat, lng]) =>
     L.marker([lat, lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'place ' + kind, html: `<span>${esc(name)}</span>`, iconSize: [0, 0] }) })));
   function addGroup(d) {
     if (!d || !document.body.contains(el)) return;
     keep(L.polygon(d.land, { renderer: rnd, interactive: false, stroke: false, fillColor: '#f2efe9', fillOpacity: 1 }));
-    if (d.lines.lake) keep(L.polygon(d.lines.lake, { renderer: rnd, interactive: false, stroke: false, fillColor: '#aad3df', fillOpacity: 1 }));
+    if (d.lines.lake) keep(L.polygon(d.lines.lake, { renderer: rnd, interactive: false, stroke: false, fillColor: '#aad3df', fillOpacity: 1 }))._lake = true;
     const layers = ROAD_ORDER.filter(k => d.lines[k]).map(k => {
       const st = ROAD[k];
       const casing = st.k ? L.polyline(d.lines[k], { renderer: rnd, interactive: false, color: st.k, lineCap: 'round', lineJoin: 'round' }) : null;
@@ -337,12 +340,25 @@ function makeMap(el, opts = {}) {
     // Road fills always sit above every casing, so junctions look clean.
     ROAD_ORDER.forEach(k => all.filter(l => l.k === k).forEach(l => m.hasLayer(l.fill) && l.fill.bringToFront()));
     groups.forEach(g => g.places.forEach(([pg, lo, hi]) => (names && z >= lo && z < hi ? pg.addTo(m) : m.removeLayer(pg))));
-    base === 'killim' && z >= 15 ? town.addTo(m) : m.removeLayer(town);
+    base === 'killim' && z >= 15 && !isNight() ? town.addTo(m) : m.removeLayer(town);   // the day-coloured town picture stays off at night
+    tint();
     base !== 'streets' && z < 11.5 ? islandLabels.addTo(m) : m.removeLayer(islandLabels);
     el.classList.toggle('onsat', base === 'sat' || base === 'satlabels');
     // Island names for the whole country only make sense zoomed right out.
     islandLabels.eachLayer(mk => { const el2 = mk.getElement && mk.getElement(); if (el2) el2.style.display = (z < 8.5 && !/big|town/.test(el2.className)) ? 'none' : ''; });
   }
+  // Day or night colours for our own map (satellite and street pictures keep their own colours).
+  const isNight = () => base === 'killim' && document.documentElement.dataset.theme === 'dark';
+  let tinted = null;
+  function tint() {
+    const n = isNight(), key = n + ':' + fills.length + ':' + groups.length;
+    if (key === tinted) return; tinted = key;
+    el.style.background = n ? NIGHT.sea : '#aad3df';
+    fills.forEach(l => l.setStyle({ fillColor: l._lake ? (n ? NIGHT.sea : '#aad3df') : (n ? NIGHT.land : '#f2efe9') }));
+    groups.forEach(g => g.layers.forEach(({ k, st, casing, fill }) => { fill.setStyle({ color: n ? NIGHT.c[k] : st.c }); casing && casing.setStyle({ color: n ? NIGHT.casing : st.k }); }));
+    el.classList.toggle('nightmap', n);
+  }
+  document.addEventListener('kl-theme', () => { if (document.body.contains(el)) sync(); });
   m.on('moveend', load);
   m.on('zoomend', sync);
   // Switch between our map, detailed streets and satellite. The choice is remembered on this phone.
@@ -370,6 +386,7 @@ function makeMap(el, opts = {}) {
     }
     fills.slice().reverse().forEach(l => (showFills() ? (l.addTo(m), l.bringToBack()) : m.removeLayer(l)));
     sync();
+    el.dataset.base = kind;
     m.fire('basechange', { base: kind });
   };
   m.getBase = () => base;
@@ -388,7 +405,9 @@ function makeMap(el, opts = {}) {
     } });
     new Ctl().addTo(m);
   }
-  const saved = layersOpt === false ? 'killim' : store.get('kl-base', 'killim');
+  el.dataset.base = 'killim';
+  // Low-data phones always start on our own light map, never on satellite pictures.
+  const saved = layersOpt === false || prefs.lite() ? 'killim' : store.get('kl-base', 'killim');
   if (saved !== 'killim') m.setBase(saved);
   m.fitBounds(start);
   m.showRegion = r => m.flyToBounds((REGIONS[r] || REGIONS.efate).bounds, { duration: .8 });
@@ -433,7 +452,30 @@ function makePicker(el, textEl, start, locBtn) {
 // Installable app: register the offline helper (real site only).
 if ('serviceWorker' in navigator && BASE === '/' && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 
-window.KL = { t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
+// ---------- 3D kava shell (loaded late, only when the phone can take it) ----------
+// `el` already shows the flat shell picture; the 3D one is laid over it once it has drawn.
+const prefs = window.KLprefs || { lite: () => false, reducedMotion: () => false };
+const webglOk = (() => { let ok = null; return () => { if (ok == null) { try { const c = document.createElement('canvas'); ok = !!(window.WebGLRenderingContext && c.getContext('webgl')); } catch { ok = false; } } return ok; }; })();
+let shellLoad = null;
+function shell3d(el, key, light, opts) {
+  if (!el) return;
+  el.dataset.light = light;      // the flat picture underneath follows the light too
+  if (prefs.lite() || (navigator.deviceMemory && navigator.deviceMemory <= 1) || !webglOk()) return;
+  shellLoad = shellLoad || new Promise(res => {
+    const go = () => { const s = document.createElement('script'); s.src = BASE + 'assets/shell3d.js'; s.onload = () => res(window.KLShell || null); s.onerror = () => res(null); document.head.appendChild(s); };
+    window.requestIdleCallback ? requestIdleCallback(go, { timeout: 1200 }) : setTimeout(go, 300);
+  });
+  shellLoad.then(S => { if (S && document.body.contains(el)) S.attach(el, key, light, opts); });
+}
+// How fresh a light is, and who set it: an owner's own tap looks solid, the automatic schedule looks dashed.
+function freshHtml(n) {
+  const l = lightOf(n), by = l === 'stale' || l === 'reported' ? 'old' : n.lightBy === 'owner' || n.lightBy === 'team' ? 'person' : n.lightBy === 'schedule' ? 'auto' : 'plain';
+  const recent = by === 'person' && num(n.lightAt) && Date.now() - n.lightAt < 2 * 3600e3 && (l === 'green' || l === 'amber');
+  const icon = by === 'person' ? '👤' : by === 'auto' ? '⏰' : '';
+  return `<span class="fresh by-${by}${recent ? ' recent' : ''}">${icon ? `<span aria-hidden="true">${icon}</span> ` : ''}${esc(updatedLine(n))}</span>`;
+}
+
+window.KL = { shell3d, freshHtml, prefs, t, BASE, asset, resizeToJpeg, uploadImage, $, esc, clean, num, LIGHT, lightOf, autoClosedAt, ago, vuTime, fmtClose, updatedLine, reportWhat,
   priceList, starsText, directions, kavaLine, store, deviceId, km, fmtKm, locate, toast, setMsg, api, sendLater, flushOutbox, outboxCount, shareNakamal, shareUrl, shareTonight, schedText, schedGridHtml, wireSchedGrid, readSchedGrid,
   makeMap, makePicker, pinIcon, REGIONS, osmIndex: OSM_INDEX };
 })();

@@ -18,6 +18,7 @@ function shape(n: any, origin: string) {
   return {
     id: n.id, name: n.name, area: n.area, region: n.region, lat: n.lat, lng: n.lng,
     status: shown,                                 // green | amber | closed | stale | reported
+    facebook: n.facebook || null,
     light: n.light, lightUpdatedAt: n.lightAt ? new Date(n.lightAt).toISOString() : null,
     closeTime: n.closeTime || null, note: n.note || null, hours: n.hours || null, about: n.about || null,
     kava: { from: n.kavaFrom || null, strength: n.strength || null },

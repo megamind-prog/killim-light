@@ -20,6 +20,10 @@ New nakamals stay hidden until the Killim Light team has visited and approved th
 
 Runs on Netlify: Functions + Blobs (storage) + Identity (logins). No other services.
 
+## Look and feel
+
+The colours are kava browns with lagoon teal and coral, defined once as tokens at the top of `public/assets/app.css`. The app turns to a dark "night look" after sunset. The 3D kava shell is our own small WebGL code (`public/assets/shell3d.js`), with no library. See [docs/RECOMMENDATIONS.md](docs/RECOMMENDATIONS.md) for what was built and why.
+
 ## Run your own copy
 
 1. Deploy this folder to Netlify (`netlify deploy --prod`, or connect a Git repo).

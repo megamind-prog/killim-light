@@ -2,11 +2,12 @@
 <html lang="bi">
 <head>
 <meta charset="utf-8">
+<script src="/assets/theme.js"></script>
 <script src="/assets/boot.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Killim Light · Nakamals Vanuatu</title>
 <meta name="description" content="Live kava lights for nakamals in Vanuatu: see which nakamals have kava ready tonight, prices, ratings and directions.">
-<meta name="theme-color" content="#5b4a2e">
+<meta name="theme-color" content="#3B2616">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
@@ -15,8 +16,6 @@
 <meta property="og:url" content="https://killim-light.netlify.app/">
 <meta property="og:image" content="https://killim-light.netlify.app/assets/share-card.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
 <link rel="stylesheet" href="/assets/leaflet/leaflet.css">
 <link rel="stylesheet" href="/assets/app.css">
 </head>
@@ -30,14 +29,20 @@
   </nav>
 </header>
 
+<div class="installnudge" id="installNudge" hidden><img src="/assets/icon-192.png" alt="" width="40" height="40"><p data-t="installNudge">Add Killim Light to your phone.</p><button class="btn go" type="button" id="installYes" data-t="installYes">Add to phone</button><button class="link" type="button" id="installNo" data-t="installNo">Not now</button></div>
 <div class="shell">
   <aside class="side" id="sheet" data-state="peek" aria-label="Nakamals">
     <button class="grab" id="grab" type="button" aria-expanded="false" aria-controls="sheet"><span aria-hidden="true"></span><b class="sr" data-t="showList">Show the list</b></button>
     <div class="sidehead">
       <div class="banner" id="offlineBanner" hidden></div>
       <p class="kicker" data-t="tagline">Where is the kava ready tonight?</p>
-      <h1 class="headline" id="headline" aria-live="polite">…</h1>
-      <p class="subline" id="subline"></p>
+      <div class="headrow">
+        <div class="headtext"><h1 class="headline" id="headline" aria-live="polite">…</h1>
+          <p class="subline" id="subline"></p></div>
+        <div class="shellhero sm" id="heroShell" data-light="closed" aria-hidden="true"></div>
+      </div>
+      <p class="liveline" id="liveLine" hidden><span class="livedot" aria-hidden="true"></span><span id="liveText"></span></p>
+      <button class="orderchip" type="button" id="orderChip" hidden>↻ <span data-t="newOrder">Lights changed: sort again</span></button>
       <button class="nearcta" type="button" id="nearCta" data-t="nearCta">📍 Find kava near me</button>
       <button class="sharetonight" type="button" id="shareTonight"><span aria-hidden="true">↗</span> <span data-t="shareTonight">Share tonight's lights</span></button>
       <div class="controls">
@@ -68,9 +73,11 @@
     </div>
     <div class="areabox" id="areaBox"></div>
     <div class="list" id="list" aria-live="polite"><div class="empty" data-t="loading">Loading…</div></div>
+    <a class="claimcard" href="/owner"><span aria-hidden="true">🥥</span><span><b data-t="claimCardTitle">Own a nakamal?</b><span data-t="claimCardText">Put it on the map and set your own light. It is free.</span></span><span class="btn" data-t="claimCardBtn">Get started</span></a>
     <footer class="foot">
+      <p><button class="link" type="button" id="liteBtn"></button> <span class="hint" data-t="liteHint">No photos, no satellite, no 3D.</span></p>
       <p><span data-t="ownerLink">Run a nakamal?</span> <a class="link" href="/owner" data-t="ownerLogin">Owner login</a></p>
-      <p class="footlinks"><a href="/developers" data-t="devLink">Developers &amp; open data</a> · <a href="/privacy" data-t="privacy">Privacy</a> · <a href="/terms" data-t="terms">Terms</a></p>
+      <p class="footlinks"><a href="/developers" data-t="devLink">Developers &amp; open data</a> · <a href="/privacy" data-t="privacy">Privacy</a> · <a href="/terms" data-t="terms">Terms</a> · <a href="https://github.com/megamind-prog/killim-light" target="_blank" rel="noopener" data-t="openSource">Open source</a></p>
       <p class="footlinks" data-t="mapAttrib" data-tv='{"osm":"<a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap contributors</a>"}'>Map data © OpenStreetMap contributors</p>
     </footer>
   </aside>

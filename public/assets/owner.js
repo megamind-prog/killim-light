@@ -64,10 +64,16 @@ function render() {
     ${mine.map(ownerCard).join('')}
     <div class="row-btns"><button class="btn" type="button" id="addBtn">${esc(t('addNakamal'))}</button></div>
     <details class="card" ${showProfile ? 'open' : ''} id="profBox"><summary><b>${esc(t('myProfile'))}</b></summary>${profileCard()}</details>
+    <div class="ohelp">
+      <button type="button" class="otile" id="guideBtn"><span aria-hidden="true">❓</span>${esc(t('guideBtn'))}</button>
+      ${canRemind() ? `<button type="button" class="otile" id="remindBtn" aria-pressed="${!!state.remind}"><span aria-hidden="true">${state.remind ? '🔔' : '🔕'}</span>${esc(t(state.remind ? 'remindOn' : 'remindOff'))}</button>` : ''}
+    </div>
     <p class="hint">${esc(t('staleNote'))}</p>
     <p class="hint"><a class="link" href="?quick=1">${esc(t('quickOpen'))}</a> · ${esc(t('quickTip'))}</p>`;
   $('addBtn').onclick = () => { adding = true; reg = null; render(); scrollTo({ top: 0 }); };
   wireVerify();
+  $('guideBtn').onclick = () => guideSheet();
+  if ($('remindBtn')) $('remindBtn').onclick = toggleRemind;
   $('profBox').ontoggle = e => { showProfile = e.target.open; };
   wireProfile();
   wireCards(mine);
@@ -128,6 +134,7 @@ const lightButtons = (n, big) => `<div class="lights ${big ? '' : 'small'}" role
 function wireCards(mine) {
   box.querySelectorAll('[data-card]').forEach(card => {
     const id = card.dataset.card, n = mine.find(x => x.id === id);
+    KL.shell3d(card.querySelector('[data-shell]'), 'own-' + id, n.shown || 'closed');
     card.querySelectorAll('[data-light]').forEach(b => b.onclick = () => setLight(n, b.dataset.light));
     const sp = card.querySelector('[data-speak]');
     if (sp) sp.onclick = () => speak(t('speakHelp'));
@@ -136,9 +143,69 @@ function wireCards(mine) {
     const note = card.querySelector('[data-note]');
     if (note) note.onclick = async () => { if (await act({ action: 'note', id, note: clean(card.querySelector('input').value, 120) }, t('noteSaved'))) render(); };
     card.querySelectorAll('[data-edit]').forEach(ed => ed.onclick = () => { editId = id; editTab = ed.dataset.edit || 'photos'; render(); scrollTo({ top: 0 }); });
+    const fk = card.querySelector('[data-fbkit]');
+    if (fk) fk.onclick = () => fbKit(n);
     const sh = card.querySelector('[data-share]');
     if (sh) sh.onclick = () => KL.shareNakamal(n);
   });
+}
+
+// ---------- post Killim Light on the nakamal's own Facebook Page ----------
+function fbKit(n) {
+  const url = KL.shareUrl(n);
+  const text = t('fbKitText', { name: n.name, url });
+  document.querySelector('.sheet')?.remove();
+  const el = document.createElement('div'); el.className = 'sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', t('fbKitTitle'));
+  el.innerHTML = `<div class="sheetbox"><h3>📘 ${esc(t('fbKitTitle'))}</h3>
+    <ol class="steps" style="margin:0"><li>${esc(t('fbKit1'))}</li><li>${esc(t('fbKit2'))}</li><li>${esc(t('fbKit3'))}</li></ol>
+    <textarea class="field" rows="6" readonly aria-label="${esc(t('fbKitTitle'))}">${esc(text)}</textarea>
+    <button class="btn" type="button" data-copy>${esc(t('fbKitCopy'))}</button>
+    <a class="btn fb" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}" target="_blank" rel="noopener">${esc(t('fbKitOpen'))}</a>
+    ${n.facebook ? `<a class="btn" href="${esc(n.facebook)}" target="_blank" rel="noopener">${esc(t('fbKitMyPage'))}</a>` : ''}
+    <p class="hint">${esc(t('fbKitTip', { url }))}</p>
+    <button class="link" type="button" data-close>${esc(t('cancel'))}</button></div>`;
+  document.body.appendChild(el);
+  el.addEventListener('click', async e => {
+    if (e.target === el || e.target.closest('[data-close]')) return el.remove();
+    if (e.target.closest('[data-copy]')) { const ta = el.querySelector('textarea'); try { await navigator.clipboard.writeText(ta.value); toast(t('copied')); } catch { ta.select(); } }
+  });
+}
+
+// ---------- picture guides: three steps each, big pictures, few words ----------
+const GUIDES = [
+  { key: 'light', steps: [['gshell l-green', '👆'], ['gshell l-amber', '👆'], ['gshell l-closed', '👆']] },
+  { key: 'hours', steps: [['emoji', '▾'], ['emoji', '⏰'], ['emoji', '✓']] },
+  { key: 'photos', steps: [['emoji', '▾'], ['emoji', '📷'], ['emoji', '🖼️']] },
+];
+function guideSheet(which = 'light') {
+  document.querySelector('.sheet')?.remove();
+  const el = document.createElement('div'); el.className = 'sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', t('guideBtn'));
+  const paint = () => { const g = GUIDES.find(x => x.key === which);
+    el.innerHTML = `<div class="sheetbox guide"><h3>❓ ${esc(t('guideBtn'))}</h3>
+      <div class="seg" role="tablist">${GUIDES.map(x => `<button type="button" role="tab" data-guide="${x.key}" aria-pressed="${x.key === which}">${esc(t('guide.' + x.key))}</button>`).join('')}</div>
+      <ol class="gsteps">${g.steps.map(([kind, mark], i) => `<li class="gstep"><span class="gnum">${i + 1}</span>
+        <span class="gart ${kind}" aria-hidden="true">${kind === 'emoji' ? mark : `<i></i><b>${mark}</b>`}</span>
+        <span class="gtext">${esc(t(`guide.${g.key}.${i + 1}`))}</span></li>`).join('')}</ol>
+      <button class="primary" type="button" data-close>${esc(t('guideOk'))}</button></div>`; };
+  paint(); document.body.appendChild(el);
+  el.addEventListener('click', e => {
+    if (e.target === el || e.target.closest('[data-close]')) return el.remove();
+    const b = e.target.closest('[data-guide]'); if (b) { which = b.dataset.guide; paint(); }
+  });
+}
+
+// ---------- the 5 pm reminder: "Time for kava, set your light" ----------
+const canRemind = () => !!(state && state.pushKey && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+const urlB64 = s => { const p = '='.repeat((4 - s.length % 4) % 4), b = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); };
+async function toggleRemind() {
+  try {
+    if (state.remind) { await authed('/api/owner', { action: 'remindOff' }); state.remind = false; toast(t('remindStopped')); return render(); }
+    if ((await Notification.requestPermission()) !== 'granted') return toast(t('remindBlocked'));
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(state.pushKey) });
+    await authed('/api/owner', { action: 'remindOn', subscription: sub.toJSON(), lang: KLi18n.lang || 'bi' });
+    state.remind = true; toast(t('remindStarted')); render();
+  } catch (e) { toast(t('remindBlocked')); }
 }
 
 // ---------- verify the owner's phone before the first light or a claim ----------
@@ -167,19 +234,20 @@ const PENDING = 'kl-pending-lights';
 const readPending = () => { try { return JSON.parse(localStorage.getItem(PENDING) || '{}'); } catch { return {}; } };
 const writePending = p => { try { localStorage.setItem(PENDING, JSON.stringify(p)); } catch {} };
 const pendingLight = id => readPending()[id];
-function confirmTap(l, n) {
+function confirmTap(l, n, was) {
   try { navigator.vibrate && navigator.vibrate(80); } catch {}
   document.querySelector('.tapok')?.remove();
   const el = document.createElement('div'); el.className = 'tapok l-' + l; el.setAttribute('role', 'status');
-  el.innerHTML = `<div><span class="bulbbig l-${l}"></span><b>✓ ${esc(n.approved ? t('customersSee', { light: LIGHT[l].label }) : t('savedPending'))}</b></div>`;
+  el.innerHTML = `<div><div class="shellhero lg" data-light="${l}" aria-hidden="true"></div><b>✓ ${esc(n.approved ? t('customersSee', { light: LIGHT[l].label }) : t('savedPending'))}</b></div>`;
   document.body.appendChild(el); el.onclick = () => el.remove();
-  setTimeout(() => el.remove(), 2200);
+  KL.shell3d(el.querySelector('.shellhero'), 'tap', l, { from: was || 'closed' });   // the kava pours in, drains, or the X appears
+  setTimeout(() => el.remove(), 2600);
 }
 async function setLight(n, l) {
   if (!state.verified) { toast(t('verifyFirst')); const v = document.querySelector('.verifycard'); if (v) { v.scrollIntoView({ behavior: 'smooth', block: 'center' }); v.classList.add('flash'); setTimeout(() => v.classList.remove('flash'), 1200); } return; }
   const local = { ...n, light: l, shown: l, lightAt: Date.now(), lightBy: 'owner' };
   const i = state.nakamals.findIndex(x => x.id === n.id); if (i >= 0) state.nakamals[i] = local;
-  confirmTap(l, n);
+  confirmTap(l, n, n.shown);
   // Show the new light at once; mark it as waiting until the server has it.
   { const p = readPending(); p[n.id] = { light: l, at: Date.now(), sending: true }; writePending(p); }
   render();
@@ -218,6 +286,7 @@ function ownerCard(n) {
     </div>
     ${n.approved ? '' : `<p class="hint pendingnote">${esc(wait)}</p>`}
     ${n.reports ? `<p class="hint pendingnote">${esc(t('reportsNow', { n: n.reports.count, what: reportWhat(n.reports) }))}</p>` : ''}
+    <div class="shellhero" data-shell="${esc(n.id)}" data-light="${esc(n.shown || 'closed')}" aria-hidden="true"></div>
     <p class="lightq">${esc(t('lightQ'))}</p>
     ${lightButtons(n, true)}
     ${pendingLight(n.id) ? (pendingLight(n.id).sending ? `<p class="hint">⏳ ${esc(t('sendingNow'))}</p>` : `<p class="offline-wait">☁️ ${esc(t('offlineWait'))}</p>`) : ''}
@@ -236,6 +305,7 @@ function ownerCard(n) {
       <button type="button" class="otile" data-edit="stats"><span aria-hidden="true">📊</span>${esc(t('tileStats'))}</button>
       <button type="button" class="otile" data-edit="details"><span aria-hidden="true">✎</span>${esc(t('editPage'))}</button>
       ${n.approved ? `<button type="button" class="otile" data-share title="${esc(t('shareMineHint'))}"><span aria-hidden="true">↗</span>${esc(t('shareMine'))}</button>` : ''}
+      ${n.approved ? `<button type="button" class="otile" data-fbkit><span aria-hidden="true">📘</span>${esc(t('fbKitTile'))}</button>` : ''}
     </div></details>
   </div>`;
 }
@@ -315,6 +385,8 @@ function detailFields(n, withContact) {
     <label for="dArea">${esc(t('area'))}<input class="field" id="dArea" maxlength="80" value="${esc(n.area || '')}" placeholder="${esc(t('areaPh'))}"></label>
     <label for="dAbout">${esc(t('aboutThis'))}<textarea class="field" id="dAbout" maxlength="400" placeholder="${esc(t('aboutPh'))}">${esc(n.about || '')}</textarea></label>
     <label for="dHours">${esc(t('usualHours'))}<input class="field" id="dHours" maxlength="80" value="${esc(n.hours || '')}" placeholder="${esc(t('hoursPh'))}"></label>
+    <label for="dFacebook">${esc(t('fbPage'))}<input class="field" id="dFacebook" type="url" inputmode="url" maxlength="200" value="${esc(n.facebook || '')}" placeholder="facebook.com/..."></label>
+    <p class="hint">${esc(t('fbPageHint'))}</p>
     ${withContact ? `<div class="row">
       <label for="cOwner">${esc(t('yourName'))}<input class="field" id="cOwner" maxlength="80" required value="${esc(c.owner || state.user.name || '')}" placeholder="${esc(t('fullName'))}"></label>
       <label for="cPhone">${esc(t('phone'))}<input class="field" id="cPhone" type="tel" maxlength="30" required value="${esc(c.phone || '')}" placeholder="555 1234"></label></div>
@@ -326,7 +398,7 @@ function detailFields(n, withContact) {
 }
 const readDetails = () => {
   const loc = picker && picker.value;
-  return { name: clean($('dName').value, 80), area: clean($('dArea').value, 80), about: clean($('dAbout').value, 400), hours: clean($('dHours').value, 80), lat: loc && loc.lat, lng: loc && loc.lng };
+  return { name: clean($('dName').value, 80), area: clean($('dArea').value, 80), about: clean($('dAbout').value, 400), hours: clean($('dHours').value, 80), facebook: clean($('dFacebook').value, 200), lat: loc && loc.lat, lng: loc && loc.lng };
 };
 
 // ---------- registration: 3 short steps ----------

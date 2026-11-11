@@ -96,12 +96,34 @@ export const getNak = async (id: string) => (await store().get("nak/" + id, { ty
 export const getStatus = async (id: string) => ((await store().get("status/" + id, { type: "json" })) as Status | null) || { approved: false };
 export const getSettings = async (): Promise<Settings> => ({ comments: false, ...(((await store().get("settings/site", { type: "json" })) as Settings | null) || {}) });
 
-export function sanitizeDetails(body: any): { error?: string; details?: Pick<Nakamal, "name" | "area" | "about" | "hours" | "lat" | "lng"> } {
+// The nakamal's own Facebook page, as a full address on facebook.com (a page name like "salonakamal" works too).
+export function facebookUrl(v: unknown): string | null {
+  let s = String(v ?? "").trim();
+  if (!s) return "";
+  if (/^@?[A-Za-z0-9.\-]{3,80}$/.test(s)) return "https://www.facebook.com/" + s.replace(/^@/, "");
+  if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+  let u: URL; try { u = new URL(s); } catch { return null; }
+  const host = u.hostname.toLowerCase();
+  if (!/^(www\.|m\.|web\.)?(facebook\.com|fb\.com)$/.test(host) && host !== "fb.me") return null;
+  const path = u.pathname.replace(/\/+$/, "");
+  if (!path || path === "/") return null;
+  const id = u.searchParams.get("id");
+  return "https://www.facebook.com" + path + (path.endsWith("profile.php") && id && /^\d+$/.test(id) ? "?id=" + id : "");
+}
+
+export function sanitizeDetails(body: any): { error?: string; details?: Pick<Nakamal, "name" | "area" | "about" | "hours" | "lat" | "lng"> & { facebook?: string } } {
   const name = clean(body?.name, 80);
   if (name.length < 2) return { error: "Enter the nakamal name." };
   const lat = Number(body?.lat), lng = Number(body?.lng);
   if (!isNum(lat) || !isNum(lng) || !inVanuatu(lat, lng)) return { error: "Tap the map to show where the nakamal is." };
-  return { details: { name, area: clean(body?.area, 80), about: clean(body?.about, 400), hours: clean(body?.hours, 80), lat: +lat.toFixed(6), lng: +lng.toFixed(6) } };
+  const details: any = { name, area: clean(body?.area, 80), about: clean(body?.about, 400), hours: clean(body?.hours, 80), lat: +lat.toFixed(6), lng: +lng.toFixed(6) };
+  // Only change the Facebook page when the form sent one (empty = remove it).
+  if (body && "facebook" in body) {
+    const fb = facebookUrl(body.facebook);
+    if (fb === null) return { error: "That doesn't look like a Facebook page address. Open your nakamal's Page on Facebook, copy its address and paste it here." };
+    details.facebook = fb;
+  }
+  return { details };
 }
 export const sanitizePrices = (list: any): Price[] =>
   (Array.isArray(list) ? list : []).map((p) => ({ item: clean(p?.item, 40), price: clean(p?.price, 24) })).filter((p) => p.item && p.price).slice(0, 8);
@@ -236,7 +258,7 @@ export async function rebuildIndex() {
     return {
       id: n.id, name: n.name, area: n.area, about: n.about, hours: n.hours, lat: n.lat, lng: n.lng, region: regionOf(n.lat, n.lng),
       prices: n.prices || [], kavaFrom: n.kavaFrom || "", strength: n.strength || "", closeTime: n.closeTime || "",
-      light: n.light, lightAt: n.lightAt, lightBy: (n as any).lightBy || null, note: n.note,
+      light: n.light, lightAt: n.lightAt, lightBy: (n as any).lightBy || null, note: n.note, facebook: (n as any).facebook || "",
       reports: rep && rep.count >= REPORT_MIN ? rep : null,
       photos: (n.photos || []).map((p) => ({ url: photoUrl(n.id, p), w: p.w, h: p.h })),
       specials: specials.get(n.id) || [],
