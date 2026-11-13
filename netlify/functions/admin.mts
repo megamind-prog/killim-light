@@ -104,7 +104,7 @@ async function removeNakamal(id: string) {
 }
 
 // Nakamals mapped on OpenStreetMap (© OpenStreetMap contributors, ODbL), ready to import as listings with no owner.
-type OsmNak = { osm: string; name: string; area: string; lat: number; lng: number };
+type OsmNak = { osm: string; name: string; area: string; lat: number; lng: number; island?: string; town?: string };
 const metresApart = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
   const R = Math.PI / 180, h = Math.sin((b.lat - a.lat) * R / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin((b.lng - a.lng) * R / 2) ** 2;
   return 12742000 * Math.asin(Math.sqrt(h));

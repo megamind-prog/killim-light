@@ -280,7 +280,7 @@ function osmCard() {
   const fresh = osm.filter(o => !o.imported && !o.near), done = osm.filter(o => o.imported).length;
   return `<div class="card"><h2>Import nakamals from OpenStreetMap</h2>
     <p class="hint">${osm.length} nakamals and kava bars are mapped on OpenStreetMap for Vanuatu. ${done ? `${done} already imported. ` : ''}Imported ones go on the map with no owner, grey "usually open" hours and a "Claim it" link for the owner. Untick any you know are closed.</p>
-    ${fresh.length ? `<div class="osmlist">${fresh.map(o => `<label class="check"><input type="checkbox" data-osm="${esc(o.osm)}" checked><span><b>${esc(o.name)}</b> <span class="hint">${esc(o.area)}</span></span></label>`).join('')}</div>
+    ${fresh.length ? `<div class="osmlist">${fresh.map(o => `<label class="check"><input type="checkbox" data-osm="${esc(o.osm)}" checked><span><b>${esc(o.name)}</b> <span class="hint">${esc(o.area)}${o.island && o.island !== 'Efate' ? ', ' + esc(o.island) : ''}</span></span></label>`).join('')}</div>
       <div class="row"><label>Usually open<input class="field" type="time" id="oOn" value="17:00"></label><label>Until<input class="field" type="time" id="oOff" value="23:00"></label></div>
       <div class="row-btns"><button class="btn go" type="button" id="osmGo">Import ${fresh.length} nakamal${fresh.length === 1 ? '' : 's'}</button></div>` : '<p class="hint">Nothing new to import.</p>'}
     ${osm.filter(o => o.near && !o.imported).length ? `<p class="hint">Skipped because something is already on our map there: ${osm.filter(o => o.near && !o.imported).map(o => `${esc(o.name)} (near ${esc(o.near)})`).join(', ')}.</p>` : ''}
