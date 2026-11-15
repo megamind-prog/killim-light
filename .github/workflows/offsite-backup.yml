@@ -1,0 +1,115 @@
+# Weekly offsite backup, so the site can move quickly if GitHub, Netlify or Supabase goes down.
+# Each part turns on when its secret is added (Settings → Secrets and variables → Actions):
+#   MIRROR_URL          push a full copy of the code to a second git host (GitLab or Codeberg).
+#   BACKUP_PASSPHRASE   required before any data is saved; the archive is encrypted with it.
+#   SUPABASE_DB_URL     database connection string: saves roles, schema and data (Supabase's own restore format).
+#   NETLIFY_AUTH_TOKEN  saves the Netlify Blobs stores listed in .github/health.json.
+#   BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT, BACKUP_S3_KEY_ID, BACKUP_S3_SECRET
+#                       also copy the encrypted archive off GitHub (for example Cloudflare R2, free up to 10 GB).
+# The encrypted archive is always kept as a run artifact for 90 days. How to restore: docs/HEALTH-AND-BACKUP.md
+name: Offsite backup
+
+on:
+  schedule:
+    - cron: "37 21 * * 0"   # Monday 08:37 in Port Vila (Sunday 21:37 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: offsite-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_MIRROR: ${{ secrets.MIRROR_URL != '' }}
+      HAS_PASS: ${{ secrets.BACKUP_PASSPHRASE != '' }}
+      HAS_DB: ${{ secrets.SUPABASE_DB_URL != '' }}
+      HAS_NETLIFY: ${{ secrets.NETLIFY_AUTH_TOKEN != '' }}
+      HAS_S3: ${{ secrets.BACKUP_S3_BUCKET != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror the code to a second git host
+        if: env.HAS_MIRROR == 'true'
+        env:
+          MIRROR_URL: ${{ secrets.MIRROR_URL }}
+        run: |
+          git push --prune "$MIRROR_URL" '+refs/remotes/origin/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+          echo "- Code mirrored to the second git host ✓" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bundle the code
+        run: |
+          mkdir -p "$RUNNER_TEMP/backup"
+          git bundle create "$RUNNER_TEMP/backup/code.bundle" --all
+          echo "- Code bundle: $(du -h "$RUNNER_TEMP/backup/code.bundle" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: supabase/setup-cli@v1
+        if: env.HAS_DB == 'true' && env.HAS_PASS == 'true'
+        with:
+          version: latest
+      - name: Dump the Supabase database
+        if: env.HAS_DB == 'true' && env.HAS_PASS == 'true'
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          d="$RUNNER_TEMP/backup/supabase"; mkdir -p "$d"
+          supabase db dump --db-url "$DB_URL" -f "$d/roles.sql" --role-only
+          supabase db dump --db-url "$DB_URL" -f "$d/schema.sql"
+          supabase db dump --db-url "$DB_URL" -f "$d/data.sql" --use-copy --data-only
+          echo "- Supabase database: $(du -sh "$d" | cut -f1) ✓" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_NETLIFY == 'true' && env.HAS_PASS == 'true'
+        with:
+          node-version: 22
+      - name: Export Netlify Blobs
+        if: env.HAS_NETLIFY == 'true' && env.HAS_PASS == 'true' && hashFiles('.github/health.json') != ''
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          if ! node -e 'process.exit((require("./.github/health.json").netlify_blob_stores||[]).length?0:1)'; then echo "No blob stores listed."; exit 0; fi
+          tools="$RUNNER_TEMP/blob-tools"; mkdir -p "$tools"; (cd "$tools" && npm init -y >/dev/null && npm i --silent @netlify/blobs@^11)
+          cp scripts/health/export-blobs.mjs "$tools/"
+          node "$tools/export-blobs.mjs" "$RUNNER_TEMP/backup/netlify-blobs" | sed 's/^/- Netlify Blobs /' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Encrypt the archive
+        run: |
+          cd "$RUNNER_TEMP"
+          name="backup-${GITHUB_REPOSITORY#*/}-$(date -u +%F)"
+          if [ "$HAS_PASS" = "true" ]; then
+            tar czf "$name.tar.gz" -C backup .
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "$name.tar.gz.gpg" "$name.tar.gz"
+            rm "$name.tar.gz"; file="$name.tar.gz.gpg"
+          else
+            echo "- ⚠ No BACKUP_PASSPHRASE secret, so only the code was saved (no database or app data)." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event.repository.private }}" = "true" ]; then tar czf "$name.tar.gz" -C backup code.bundle; file="$name.tar.gz"; else file=""; fi
+          fi
+          echo "FILE=$file" >> "$GITHUB_ENV"
+        env:
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+
+      - uses: actions/upload-artifact@v4
+        if: env.FILE != ''
+        with:
+          name: offsite-backup
+          path: ${{ runner.temp }}/${{ env.FILE }}
+          retention-days: 90
+
+      - name: Copy the archive off GitHub
+        if: env.HAS_S3 == 'true' && env.FILE != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          aws s3 cp "$RUNNER_TEMP/$FILE" "s3://$BUCKET/${GITHUB_REPOSITORY#*/}/$FILE" ${ENDPOINT:+--endpoint-url "$ENDPOINT"}
+          echo "- Encrypted archive copied off GitHub ✓" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,9 @@
+{
+  "name": "Killim Light",
+  "sites": [
+    { "url": "https://killim-light.netlify.app/", "expect": "Killim Light" },
+    { "name": "Lights API", "url": "https://killim-light.netlify.app/api/v1/nakamals", "headers": false }
+  ],
+  "netlify_site": "killim-light",
+  "netlify_blob_stores": ["killim", "killim-img"]
+}
