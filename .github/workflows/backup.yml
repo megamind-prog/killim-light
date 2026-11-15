@@ -132,7 +132,8 @@ jobs:
       - name: Push every branch and tag to the mirror
         if: env.MIRROR_REPO_URL != ''
         run: |
-          git clone --mirror "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" repo.git
+          git clone --bare "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" repo.git
           cd repo.git
-          git push --mirror "$MIRROR_REPO_URL" 2>&1 | sed -E 's#https://[^@]+@#https://***@#g'
+          # Branches and tags only (GitHub's pull-request refs are refused by other hosts).
+          git push --prune "$MIRROR_REPO_URL" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>&1 | sed -E 's#https://[^@]+@#https://***@#g'
           echo "### Mirror updated" >> "$GITHUB_STEP_SUMMARY"
