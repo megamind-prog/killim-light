@@ -1,0 +1,139 @@
+# Daily backup of Killim Light, kept away from Netlify.
+#
+# What it saves (encrypted, because it holds owner names, phones and emails):
+#   - every Netlify Blob (nakamals, lights, contacts, ratings, photos, settings)
+#   - the whole git history as a single file (git bundle)
+# Plus, unencrypted: the public nakamal list, for a read-only fallback map.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   NETLIFY_AUTH_TOKEN   required. Netlify personal access token (User settings → Applications)
+#   NETLIFY_SITE_ID      required. Site settings → General → Project ID
+#   BACKUP_PASSPHRASE    required. A long password. Keep a copy OUTSIDE GitHub (password manager / paper)
+#   MIRROR_REPO_URL      optional. e.g. https://<user>:<token>@codeberg.org/<user>/killim-light.git
+#   BACKUP_S3_BUCKET     optional. e.g. s3://killim-backups  (Cloudflare R2, Backblaze B2 or AWS S3)
+#   BACKUP_S3_ENDPOINT   optional. e.g. https://<account>.r2.cloudflarestorage.com (leave out for AWS)
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY   optional, for the bucket
+#
+# Until the required secrets are set, the job only writes a note and stops.
+# Restore steps: docs/BACKUPS.md
+name: Backup
+
+on:
+  schedule:
+    - cron: "30 15 * * *"   # 02:30 Vanuatu time, when nobody is setting lights
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      MIRROR_REPO_URL: ${{ secrets.MIRROR_REPO_URL }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+    steps:
+      - name: Check settings
+        id: cfg
+        run: |
+          if [ -z "$NETLIFY_AUTH_TOKEN" ] || [ -z "$NETLIFY_SITE_ID" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "### Backup skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "Set NETLIFY_AUTH_TOKEN, NETLIFY_SITE_ID and BACKUP_PASSPHRASE in the repository secrets. See docs/BACKUPS.md." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.cfg.outputs.ready == 'true'
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Copy all Netlify Blobs
+        if: steps.cfg.outputs.ready == 'true'
+        run: node scripts/backup/export-blobs.mjs "$RUNNER_TEMP/backup"
+
+      - name: Bundle the git history
+        if: steps.cfg.outputs.ready == 'true'
+        run: git bundle create "$RUNNER_TEMP/backup/killim-light.bundle" --all
+
+      - name: Encrypt
+        if: steps.cfg.outputs.ready == 'true'
+        id: pack
+        run: |
+          name="killim-light-$(date -u +%Y-%m-%d).tar.gz.enc"
+          tar -C "$RUNNER_TEMP" -czf - backup \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:BACKUP_PASSPHRASE -out "$RUNNER_TEMP/$name"
+          # Prove the file opens with the passphrase before keeping it.
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:BACKUP_PASSPHRASE -in "$RUNNER_TEMP/$name" | tar -tzf - | grep -q manifest.json
+          cp "$RUNNER_TEMP/backup/public-snapshot.json" "$RUNNER_TEMP/public-snapshot.json" 2>/dev/null || true
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Backup $(date -u +%Y-%m-%d)"
+            node -e 'const m=require(process.argv[1]);for(const[s,b]of Object.entries(m.stores))console.log(`- ${s}: ${b.length} blobs`)' "$RUNNER_TEMP/backup/manifest.json"
+            echo "- archive: $(du -h "$RUNNER_TEMP/$name" | cut -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep encrypted backup (30 days)
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: ${{ runner.temp }}/${{ steps.pack.outputs.name }}
+          retention-days: 30
+          compression-level: 0
+
+      - name: Keep public nakamal list (for the fallback map)
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-snapshot
+          path: ${{ runner.temp }}/public-snapshot.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Copy to off-site storage
+        if: steps.cfg.outputs.ready == 'true' && env.BACKUP_S3_BUCKET != ''
+        run: |
+          ep=""; [ -n "$BACKUP_S3_ENDPOINT" ] && ep="--endpoint-url $BACKUP_S3_ENDPOINT"
+          aws s3 cp $ep "$RUNNER_TEMP/${{ steps.pack.outputs.name }}" "$BACKUP_S3_BUCKET/${{ steps.pack.outputs.name }}"
+          echo "- copied to off-site storage" >> "$GITHUB_STEP_SUMMARY"
+
+  mirror:
+    # Keeps a second copy of the code on another git host, so a GitHub outage
+    # or a locked account doesn't stop deploys.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MIRROR_REPO_URL: ${{ secrets.MIRROR_REPO_URL }}
+    steps:
+      - name: Push every branch and tag to the mirror
+        if: env.MIRROR_REPO_URL != ''
+        run: |
+          git clone --bare "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" repo.git
+          cd repo.git
+          # Branches and tags only (GitHub's pull-request refs are refused by other hosts).
+          git push --prune "$MIRROR_REPO_URL" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*' 2>&1 | sed -E 's#https://[^@]+@#https://***@#g'
+          echo "### Mirror updated" >> "$GITHUB_STEP_SUMMARY"
