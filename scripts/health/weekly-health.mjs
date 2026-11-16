@@ -52,12 +52,18 @@ async function checkSites() {
     const url = resolveUrl(site.url, site.path);
     const label = site.name || url || site.url;
     if (!url) { row(s, 1, `**${label}**: no address yet. Add the repository variable \`${site.url.slice(4)}\` so it can be checked.`); continue; }
-    const t0 = Date.now();
     let res, body = "";
-    try {
-      res = await fetch(url, { redirect: "follow", headers: { "user-agent": "weekly-health-check", "cache-control": "no-cache" }, signal: timeout(30000) });
-      body = await res.text();
-    } catch (e) { row(s, 2, `**${label}** is not answering (${e.cause?.code || e.name}). Check the host's status page and the playbook.`); continue; }
+    const t0 = Date.now();
+    // One retry after 10 s, so a single slow answer (a cold start) isn't reported as an outage.
+    let err = null, tries = 0;
+    for (; tries < 2; tries++) {
+      try {
+        res = await fetch(url, { redirect: "follow", headers: { "user-agent": "weekly-health-check", "cache-control": "no-cache" }, signal: timeout(30000) });
+        body = await res.text(); err = null; break;
+      } catch (e) { err = e; if (tries === 0) await new Promise((r) => setTimeout(r, 10000)); }
+    }
+    if (err) { row(s, 2, `**${label}** is not answering (${err.cause?.code || err.name}, tried twice). Check the host's status page and the playbook.`); continue; }
+    if (tries > 0) row(s, 1, `**${label}** didn't answer the first time (slow or timed out) but did on the second try.`);
     const ms = Date.now() - t0;
     const want = site.expect_status || 200;
     if (res.status !== want) row(s, 2, `**${label}** answered HTTP ${res.status} (expected ${want}).`);
