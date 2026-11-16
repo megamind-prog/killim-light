@@ -202,7 +202,8 @@ function checkCode(sec) {
     } catch { row(sec, 1, `Couldn't run npm audit in \`${dir}\`.`); }
   }
   for (const p of findFiles(".", "package.json")) if (!existsSync(path.join(path.dirname(p), "package-lock.json"))) info(sec, `\`${p}\` has no package-lock.json, so its packages can't be audited.`);
-  const pattern = "(EAA[A-Za-z0-9]{40,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|nfp_[A-Za-z0-9]{30,}|sb_secret_[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|service_role[\"' ]*[:=][\"' ]*eyJ)";
+  // Tokens must stand alone (quote, space, = or line edge around them), so base64 pictures don't match.
+  const pattern = "((^|[\"'=: ])(EAA[A-Za-z0-9]{40,}|AKIA[0-9A-Z]{16})([\"', ;]|$)|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|nfp_[A-Za-z0-9]{30,}|sb_secret_[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{20,}|service_role[\"' ]*[:=][\"' ]*eyJ)";
   const g = spawnSync("git", ["grep", "-nIE", pattern, "--", ".", ":!package-lock.json", ":!scripts/health/*"], { encoding: "utf8" });
   const hits = (g.stdout || "").trim().split("\n").filter(Boolean).map((l) => l.split(":").slice(0, 2).join(":"));
   row(sec, hits.length ? 2 : 0, hits.length ? `**Something that looks like a secret key is in the code** (${hits.slice(0, 8).join(", ")}). Move it to a secret and change the key.` : "No secret keys found in the code.");
