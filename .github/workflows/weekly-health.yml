@@ -1,0 +1,61 @@
+# Weekly health report. Every Monday morning (Port Vila time) it checks the live site,
+# HTTPS, security headers, Supabase, Netlify deploys, open pull requests and reviewers,
+# failed GitHub runs, package problems and secrets in the code, then opens a GitHub issue
+# with the report (GitHub emails you) and closes last week's. It only reads; nothing is
+# deployed or changed. Settings: .github/health.json. Plan for outages: docs/HEALTH-AND-BACKUP.md
+name: Weekly health report
+
+on:
+  schedule:
+    - cron: "53 19 * * 0"   # Monday 06:53 in Port Vila (Sunday 19:53 UTC)
+  workflow_dispatch:
+  pull_request:   # a dry run (no issue) when the checks themselves change
+    paths: [".github/health.json", "scripts/health/**", ".github/workflows/weekly-health.yml"]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: read
+  security-events: read
+
+concurrency:
+  group: weekly-health
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the checks
+        id: check
+        env:
+          # Optional: a fine-grained token with "Dependabot alerts" and "Secret scanning alerts" read access
+          # lets the report include those. Without it the built-in token is used.
+          GITHUB_TOKEN: ${{ secrets.HEALTH_TOKEN || github.token }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: node scripts/health/weekly-health.mjs
+      - name: Post this week's report as an issue
+        if: always() && steps.check.outputs.status != '' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.check.outputs.status }}
+          HEADLINE: ${{ steps.check.outputs.headline }}
+        run: |
+          gh label create weekly-health --color 0E8A16 --description "Weekly health report" 2>/dev/null || true
+          run="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          { cat report.md; echo; echo "[Run log]($run) · Run it again any time from Actions → Weekly health report → Run workflow."; } > body.md
+          case "$STATUS" in red) mark="🔴";; yellow) mark="🟡";; *) mark="✅";; esac
+          new=$(gh issue create --title "$mark Weekly health: $HEADLINE ($(date -u +%F))" --label weekly-health --body-file body.md)
+          for n in $(gh issue list --label weekly-health --state open --json number,url --jq ".[] | select(.url != \"$new\") | .number"); do
+            gh issue close "$n" --comment "Replaced by $new" >/dev/null
+          done
+      - name: Fail the run when action is needed (GitHub emails you)
+        if: steps.check.outputs.status == 'red'
+        run: exit 1
